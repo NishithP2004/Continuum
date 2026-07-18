@@ -42,7 +42,7 @@ stop_daemon_pid() {
   local candidate_pid="$1"
   kill "${candidate_pid}" 2>/dev/null || true
   for _ in {1..40}; do
-    kill -0 "${candidate_pid}" 2>/dev/null || return
+    kill -0 "${candidate_pid}" 2>/dev/null || return 0
     sleep 0.1
   done
 }
