@@ -49,7 +49,7 @@ The following commands passed on the development Apple Silicon Mac:
 | `npm run benchmark:retrieval` | Correct result retrieved from 10,000 synthetic checkpoints in 9.4 ms, explicit `fts_graph` mode. |
 | Ephemeral Codex MCP resumption | `codex exec -m gpt-5.6-sol` called `resume`, then `diff`, and returned the grounded file/commit/blocker/next action. |
 
-These are local results on the development machine and are tied to verified implementation commit `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5`. The clean bootstrap used fresh dependencies/build state and a new demo database; it is not evidence from an unrelated judge machine.
+These are local results on the development machine and are tied to verified implementation commit `5d0624adc64d0d70f515627138f799793492d7f3`. The clean bootstrap used fresh dependencies/build state and a new demo database; it is not evidence from an unrelated judge machine.
 
 Live-provider status at this refresh:
 
@@ -290,12 +290,12 @@ Fill this table after testing; leave failures explicit.
 
 | Check | Commit | Machine/environment | Result | Evidence link |
 | --- | --- | --- | --- | --- |
-| `npm run verify` | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS** — 32 engine, 29 collector, 6 Swift, build/typecheck, MCP smoke | `[TERMINAL_EVIDENCE_LINK]` |
-| Staged app/daemon verify | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS** | `[TERMINAL_EVIDENCE_LINK]` |
-| Full clean bootstrap | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS** — fresh project-local demo database | `[TERMINAL_EVIDENCE_LINK]` |
-| Gemma 3n live | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **PASS** — real schema-valid `gemma3n:e2b` output | `[TERMINAL_EVIDENCE_LINK]` |
-| `npm audit` | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **PASS** — zero known vulnerabilities | `[TERMINAL_EVIDENCE_LINK]` |
-| OpenAI live | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **NOT RUN — missing key** | `[LINK]` |
-| Four-collector live session | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | `[ENV]` | **NOT YET RECORDED** | `[LINK]` |
-| Codex MCP resumption | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **PASS — ephemeral GPT-5.6 Sol `resume` + `diff`; primary `/feedback` pending** | `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]` |
-| 10k retrieval benchmark | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS — 9.4 ms, `fts_graph`** | `[TERMINAL_EVIDENCE_LINK]` |
+| `npm run verify` | `5d0624adc64d0d70f515627138f799793492d7f3` | Development Apple Silicon Mac | **PASS** — 32 engine, 29 collector, 6 Swift, build/typecheck, MCP smoke | `[TERMINAL_EVIDENCE_LINK]` |
+| Staged app/daemon verify | `5d0624adc64d0d70f515627138f799793492d7f3` | Development Apple Silicon Mac | **PASS** | `[TERMINAL_EVIDENCE_LINK]` |
+| Full clean bootstrap | `5d0624adc64d0d70f515627138f799793492d7f3` | Development Apple Silicon Mac | **PASS** — fresh project-local demo database | `[TERMINAL_EVIDENCE_LINK]` |
+| Gemma 3n live | `5d0624adc64d0d70f515627138f799793492d7f3` | Development machine | **PASS** — real schema-valid `gemma3n:e2b` output | `[TERMINAL_EVIDENCE_LINK]` |
+| `npm audit` | `5d0624adc64d0d70f515627138f799793492d7f3` | Development machine | **PASS** — zero known vulnerabilities | `[TERMINAL_EVIDENCE_LINK]` |
+| OpenAI live | `5d0624adc64d0d70f515627138f799793492d7f3` | Development machine | **NOT RUN — missing key** | `[LINK]` |
+| Four-collector live session | `5d0624adc64d0d70f515627138f799793492d7f3` | `[ENV]` | **NOT YET RECORDED** | `[LINK]` |
+| Codex MCP resumption | `5d0624adc64d0d70f515627138f799793492d7f3` | Development machine | **PASS — ephemeral GPT-5.6 Sol `resume` + `diff`; primary `/feedback` pending** | `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]` |
+| 10k retrieval benchmark | `5d0624adc64d0d70f515627138f799793492d7f3` | Development Apple Silicon Mac | **PASS — 9.4 ms, `fts_graph`** | `[TERMINAL_EVIDENCE_LINK]` |
