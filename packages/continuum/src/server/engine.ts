@@ -19,6 +19,7 @@ export async function createEngine(config: RuntimeConfig): Promise<Engine> {
   const database = new ContinuumDatabase(config.databasePath);
   await database.initializeVector();
   const embeddings = new EmbeddingService();
+  void embeddings.status();
   const providers = new ProviderRegistry(config);
   const contexts = new ContextService(database, embeddings);
   const pipeline = new EventPipeline(database, providers, embeddings);
