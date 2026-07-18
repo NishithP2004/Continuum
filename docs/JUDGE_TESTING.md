@@ -49,7 +49,7 @@ The following commands passed on the development Apple Silicon Mac:
 | `npm run benchmark:retrieval` | Correct result retrieved from 10,000 synthetic checkpoints in 9.4 ms, explicit `fts_graph` mode. |
 | Ephemeral Codex MCP resumption | `codex exec -m gpt-5.6-sol` called `resume`, then `diff`, and returned the grounded file/commit/blocker/next action. |
 
-These are local results on the development machine and are tied to verified implementation commit `efa59d4e0ca910068a06141dad6dc6b032eef169`. The clean bootstrap used fresh dependencies/build state and a new demo database; it is not evidence from an unrelated judge machine.
+These are local results on the development machine and are tied to verified implementation commit `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5`. The clean bootstrap used fresh dependencies/build state and a new demo database; it is not evidence from an unrelated judge machine.
 
 Live-provider status at this refresh:
 
@@ -100,7 +100,7 @@ Build/stage verification:
 ./script/build_and_run.sh --verify
 ```
 
-This command has passed on the development machine. `.codex/environments/environment.toml` also provides a Codex **Run** action wired to `./script/build_and_run.sh`.
+This command has passed on the development machine. `.codex/environments/environment.toml` also provides a Codex **Run** action wired to `./script/build_and_run.sh`. Repeated launches stop only a daemon verified as belonging to this repository, refuse unrelated port owners, bind readiness to the newly launched PID, and detach the daemon from the invoking shell before opening the app.
 
 ## Inspect engine health
 
@@ -290,12 +290,12 @@ Fill this table after testing; leave failures explicit.
 
 | Check | Commit | Machine/environment | Result | Evidence link |
 | --- | --- | --- | --- | --- |
-| `npm run verify` | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development Apple Silicon Mac | **PASS** — 32 engine, 29 collector, 6 Swift, build/typecheck, MCP smoke | `[TERMINAL_EVIDENCE_LINK]` |
-| Staged app/daemon verify | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development Apple Silicon Mac | **PASS** | `[TERMINAL_EVIDENCE_LINK]` |
-| Full clean bootstrap | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development Apple Silicon Mac | **PASS** — fresh project-local demo database | `[TERMINAL_EVIDENCE_LINK]` |
-| Gemma 3n live | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development machine | **PASS** — real schema-valid `gemma3n:e2b` output | `[TERMINAL_EVIDENCE_LINK]` |
-| `npm audit` | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development machine | **PASS** — zero known vulnerabilities | `[TERMINAL_EVIDENCE_LINK]` |
-| OpenAI live | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development machine | **NOT RUN — missing key** | `[LINK]` |
-| Four-collector live session | `efa59d4e0ca910068a06141dad6dc6b032eef169` | `[ENV]` | **NOT YET RECORDED** | `[LINK]` |
-| Codex MCP resumption | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development machine | **PASS — ephemeral GPT-5.6 Sol `resume` + `diff`; primary `/feedback` pending** | `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]` |
-| 10k retrieval benchmark | `efa59d4e0ca910068a06141dad6dc6b032eef169` | Development Apple Silicon Mac | **PASS — 9.4 ms, `fts_graph`** | `[TERMINAL_EVIDENCE_LINK]` |
+| `npm run verify` | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS** — 32 engine, 29 collector, 6 Swift, build/typecheck, MCP smoke | `[TERMINAL_EVIDENCE_LINK]` |
+| Staged app/daemon verify | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS** | `[TERMINAL_EVIDENCE_LINK]` |
+| Full clean bootstrap | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS** — fresh project-local demo database | `[TERMINAL_EVIDENCE_LINK]` |
+| Gemma 3n live | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **PASS** — real schema-valid `gemma3n:e2b` output | `[TERMINAL_EVIDENCE_LINK]` |
+| `npm audit` | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **PASS** — zero known vulnerabilities | `[TERMINAL_EVIDENCE_LINK]` |
+| OpenAI live | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **NOT RUN — missing key** | `[LINK]` |
+| Four-collector live session | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | `[ENV]` | **NOT YET RECORDED** | `[LINK]` |
+| Codex MCP resumption | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development machine | **PASS — ephemeral GPT-5.6 Sol `resume` + `diff`; primary `/feedback` pending** | `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]` |
+| 10k retrieval benchmark | `1b4aac7cdb1eb3e609e37b7efb19169ba27511a5` | Development Apple Silicon Mac | **PASS — 9.4 ms, `fts_graph`** | `[TERMINAL_EVIDENCE_LINK]` |

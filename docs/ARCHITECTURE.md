@@ -49,7 +49,7 @@ flowchart TB
     DF --> MCP
 ```
 
-The engine, database, model providers, and native app are separate processes. The daemon is the only writer. `CONTINUUM_HOST` accepts only `127.0.0.1`, `localhost`, or `::1`; it cannot expose the daemon on a LAN interface. The MCP process opens the selected SQLite database with Node’s read-only flag and `PRAGMA query_only = ON`.
+The engine, database, model providers, and native app are separate processes. The daemon is the only writer. `script/build_and_run.sh` launches it in a detached OS session so it survives the Codex Run shell, verifies that the new PID owns the listening port, and stops a stale listener only when its command and repository working directory identify it as this Continuum engine. `CONTINUUM_HOST` accepts only `127.0.0.1`, `localhost`, or `::1`; it cannot expose the daemon on a LAN interface. The MCP process opens the selected SQLite database with Node’s read-only flag and `PRAGMA query_only = ON`.
 
 ## Workspace layout
 
