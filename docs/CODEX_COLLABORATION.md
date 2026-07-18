@@ -7,7 +7,7 @@ This document records decisions and reproducible evidence without fabricating a 
 ## Required submission reference
 
 - **Primary Codex `/feedback` session ID:** `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]`
-- **Final implementation commit:** `[FINAL_COMMIT_SHA]`
+- **Verified implementation commit:** `efa59d4e0ca910068a06141dad6dc6b032eef169`
 - **Public repository:** `[PUBLIC_GITHUB_URL]`
 - **Demo video:** `[PUBLIC_YOUTUBE_URL]`
 
