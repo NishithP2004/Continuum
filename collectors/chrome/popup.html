@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Continuum</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Continuum</h1>
+      <p class="privacy">Only the foreground tab's allowlisted host and sanitized URL path are captured. Page titles and content stay out.</p>
+      <label>
+        Project ID
+        <input id="project" autocomplete="off" maxlength="80" placeholder="Paste output from npm run project-id" required />
+      </label>
+      <label>
+        Allowed domains
+        <textarea id="allowlist" rows="4" placeholder="developers.openai.com&#10;github.com"></textarea>
+      </label>
+      <label>
+        Local bearer token
+        <input id="token" type="password" autocomplete="off" placeholder="Stored for this browser session" />
+      </label>
+      <label class="toggle">
+        <input id="enabled" type="checkbox" />
+        Capture active allowlisted tabs
+      </label>
+      <button id="save">Connect and save</button>
+      <output id="status" aria-live="polite"></output>
+    </main>
+    <script src="popup.mjs" type="module"></script>
+  </body>
+</html>

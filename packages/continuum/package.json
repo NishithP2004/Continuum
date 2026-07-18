@@ -1,0 +1,36 @@
+{
+  "name": "@continuum/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "continuum": "./dist/cli/main.js",
+    "continuum-mcp": "./dist/mcp/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:daemon": "tsx src/server/main.ts",
+    "dev:mcp": "tsx src/mcp/main.ts",
+    "dev:cli": "tsx src/cli/main.ts"
+  },
+  "dependencies": {
+    "@continuum/contracts": "*",
+    "@huggingface/transformers": "^3.8.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "fastify": "^5.6.2",
+    "openai": "^6.48.0",
+    "sqlite-vec": "^0.1.9",
+    "zod": "^4.3.6"
+  }
+}

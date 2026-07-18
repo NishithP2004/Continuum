@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Continuum VS Code Collector",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/collectors/vscode",
+        "${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/collectors/vscode/dist/**/*.js"
+      ],
+      "preLaunchTask": "Continuum: build VS Code collector"
+    }
+  ]
+}

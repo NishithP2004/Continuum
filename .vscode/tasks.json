@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Continuum: build VS Code collector",
+      "type": "shell",
+      "command": "npm run build -w @continuum/vscode-collector",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$tsc"
+    }
+  ]
+}
