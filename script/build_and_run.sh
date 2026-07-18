@@ -8,6 +8,8 @@ app_bundle="${dist_dir}/Continuum.app"
 daemon_pid_file="${runtime_dir}/daemon.pid"
 daemon_log="${runtime_dir}/daemon.log"
 app_log="${runtime_dir}/app.log"
+daemon_port="${CONTINUUM_PORT:-43117}"
+daemon_entrypoint="${continuum_root}/packages/continuum/dist/server/main.js"
 mode="${1:-run}"
 
 case "${mode}" in
@@ -20,33 +22,78 @@ esac
 
 mkdir -p "${runtime_dir}" "${dist_dir}"
 
+listener_pids() {
+  lsof -nP -tiTCP:"${daemon_port}" -sTCP:LISTEN 2>/dev/null || true
+}
+
+is_continuum_daemon() {
+  local candidate_pid="$1" candidate_command candidate_cwd
+  candidate_command="$(ps -p "${candidate_pid}" -o command= 2>/dev/null || true)"
+  if [[ "${candidate_command}" == *"${daemon_entrypoint}"* ]]; then
+    return 0
+  fi
+
+  candidate_cwd="$(lsof -a -p "${candidate_pid}" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)"
+  [[ "${candidate_cwd}" == "${continuum_root}" \
+    && "${candidate_command}" == *"node packages/continuum/dist/server/main.js"* ]]
+}
+
+stop_daemon_pid() {
+  local candidate_pid="$1"
+  kill "${candidate_pid}" 2>/dev/null || true
+  for _ in {1..40}; do
+    kill -0 "${candidate_pid}" 2>/dev/null || return
+    sleep 0.1
+  done
+}
+
 stop_daemon() {
-  if [[ ! -f "${daemon_pid_file}" ]]; then
-    return
+  local recorded_pid="" candidate_pid
+  if [[ -f "${daemon_pid_file}" ]]; then
+    recorded_pid="$(tr -cd '0-9' < "${daemon_pid_file}")"
   fi
-  local daemon_pid daemon_command
-  daemon_pid="$(tr -cd '0-9' < "${daemon_pid_file}")"
-  if [[ -n "${daemon_pid}" ]] && kill -0 "${daemon_pid}" 2>/dev/null; then
-    daemon_command="$(ps -p "${daemon_pid}" -o command= 2>/dev/null || true)"
-    if [[ "${daemon_command}" == *"continuum"*"server/main.js"* ]]; then
-      kill "${daemon_pid}"
-      for _ in {1..40}; do
-        kill -0 "${daemon_pid}" 2>/dev/null || break
-        sleep 0.1
-      done
+
+  if [[ -n "${recorded_pid}" ]] && kill -0 "${recorded_pid}" 2>/dev/null && is_continuum_daemon "${recorded_pid}"; then
+    stop_daemon_pid "${recorded_pid}"
+  fi
+
+  while IFS= read -r candidate_pid; do
+    [[ -n "${candidate_pid}" ]] || continue
+    if is_continuum_daemon "${candidate_pid}"; then
+      stop_daemon_pid "${candidate_pid}"
     fi
-  fi
+  done < <(listener_pids)
+
   rm -f "${daemon_pid_file}"
 }
 
 stop_app() {
-  if pgrep -x ContinuumApp >/dev/null 2>&1; then
-    pkill -x ContinuumApp
-  fi
+  local app_pids app_pid
+  app_pids="$(pgrep -x ContinuumApp 2>/dev/null || true)"
+  [[ -n "${app_pids}" ]] || return 0
+
+  pkill -x ContinuumApp 2>/dev/null || true
+  while IFS= read -r app_pid; do
+    [[ -n "${app_pid}" ]] || continue
+    for _ in {1..20}; do
+      kill -0 "${app_pid}" 2>/dev/null || break
+      sleep 0.1
+    done
+  done <<< "${app_pids}"
 }
 
 stop_app
 stop_daemon
+
+remaining_listener_pids="$(listener_pids)"
+if [[ -n "${remaining_listener_pids}" ]]; then
+  echo "Continuum cannot start: TCP port ${daemon_port} is already owned by another process." >&2
+  while IFS= read -r listener_pid; do
+    [[ -n "${listener_pid}" ]] || continue
+    ps -p "${listener_pid}" -o pid=,command= >&2 || true
+  done <<< "${remaining_listener_pids}"
+  exit 1
+fi
 
 if [[ ! -d "${continuum_root}/node_modules" ]]; then
   npm ci --prefix "${continuum_root}"
@@ -68,17 +115,23 @@ cp "${swift_binary}" "${app_bundle}/Contents/MacOS/ContinuumApp"
 cp "${continuum_root}/native/ContinuumApp/Info.plist" "${app_bundle}/Contents/Info.plist"
 
 : > "${daemon_log}"
-node "${continuum_root}/packages/continuum/dist/server/main.js" >> "${daemon_log}" 2>&1 &
-daemon_pid=$!
+daemon_pid="$(node "${continuum_root}/script/launch_daemon.mjs" "${daemon_entrypoint}" "${daemon_log}")"
+if [[ ! "${daemon_pid}" =~ ^[0-9]+$ ]]; then
+  echo "Continuum daemon launcher did not return a valid process ID." >&2
+  exit 1
+fi
 echo "${daemon_pid}" > "${daemon_pid_file}"
 
 daemon_ready=false
 for _ in {1..80}; do
-  if curl --fail --silent "http://127.0.0.1:43117/health" >/dev/null 2>&1; then
-    daemon_ready=true
+  if ! kill -0 "${daemon_pid}" 2>/dev/null; then
     break
   fi
-  if ! kill -0 "${daemon_pid}" 2>/dev/null; then
+  active_listener_pids="$(listener_pids)"
+  if grep -Fx "${daemon_pid}" <<< "${active_listener_pids}" >/dev/null 2>&1 \
+    && curl --fail --silent "http://127.0.0.1:${daemon_port}/health" >/dev/null 2>&1 \
+    && kill -0 "${daemon_pid}" 2>/dev/null; then
+    daemon_ready=true
     break
   fi
   sleep 0.1
@@ -114,7 +167,7 @@ open_app() {
 if [[ "${mode}" == "--verify" ]]; then
   plutil -lint "${app_bundle}/Contents/Info.plist"
   test -x "${app_bundle}/Contents/MacOS/ContinuumApp"
-  curl --fail --silent "http://127.0.0.1:43117/health" >/dev/null
+  curl --fail --silent "http://127.0.0.1:${daemon_port}/health" >/dev/null
   open_app
   sleep 1
   pgrep -x ContinuumApp >/dev/null

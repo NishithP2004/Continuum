@@ -55,6 +55,10 @@ token_path="${continuum_data_dir}/auth.token"
 if [[ -n "${CONTINUUM_TOKEN:-}" ]]; then
   continuum_token="${CONTINUUM_TOKEN}"
 else
+  for _ in {1..40}; do
+    [[ -f "${token_path}" ]] && break
+    sleep 0.1
+  done
   if [[ ! -f "${token_path}" ]]; then
     echo "Continuum token was not created at ${token_path}" >&2
     exit 1
