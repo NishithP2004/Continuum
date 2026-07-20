@@ -3,12 +3,36 @@ import { CheckpointDraftSchema, type CheckpointDraft } from "@continuum/contract
 import type { CheckpointInput, CheckpointProvider, ProviderHealth } from "./types.js";
 import { validateEvidence } from "./types.js";
 import { checkpointSystemPrompt, checkpointUserPrompt } from "./prompts.js";
+import { scheduleOllamaGeneration } from "./ollama-scheduler.js";
 
 const ollamaResponseSchema = z.object({
   message: z.object({ content: z.string() })
 });
 
-let ollamaQueue: Promise<void> = Promise.resolve();
+class OllamaCheckpointValidationError extends Error {
+  readonly kind: "response" | "evidence";
+
+  constructor(cause: unknown) {
+    const message = cause instanceof Error ? cause.message : "";
+    const kind = /instruction-like|unknown event id/i.test(message) ? "evidence" : "response";
+    super(`Ollama checkpoint ${kind} validation failed`, { cause });
+    this.name = "OllamaCheckpointValidationError";
+    this.kind = kind;
+  }
+}
+
+function publicValidationError(error: OllamaCheckpointValidationError): Error {
+  if (error.kind === "evidence") {
+    return new Error("Ollama checkpoint evidence validation failed");
+  }
+  return new SyntaxError("Ollama checkpoint response validation failed");
+}
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return signal?.aborted === true
+    || (error instanceof Error && error.name === "AbortError")
+    || (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError");
+}
 
 export function normalizeLocalOllamaUrl(input: string): string {
   let url: URL;
@@ -63,23 +87,35 @@ export class OllamaProvider implements CheckpointProvider {
       signal
     });
     if (!response.ok) throw new Error(`Ollama request failed: HTTP ${response.status}`);
-    const parsedResponse = ollamaResponseSchema.parse(await response.json());
-    const draft = CheckpointDraftSchema.parse(JSON.parse(parsedResponse.message.content));
-    validateEvidence(draft, input.events);
-    return draft;
+    const responseText = await response.text();
+    signal?.throwIfAborted();
+    try {
+      const parsedResponse = ollamaResponseSchema.parse(JSON.parse(responseText));
+      const draft = CheckpointDraftSchema.parse(JSON.parse(parsedResponse.message.content));
+      validateEvidence(draft, input.events);
+      signal?.throwIfAborted();
+      return draft;
+    } catch (error) {
+      if (isAbortError(error, signal)) throw error;
+      throw new OllamaCheckpointValidationError(error);
+    }
   }
 
   async createCheckpoint(input: CheckpointInput, signal?: AbortSignal): Promise<CheckpointDraft> {
-    const run = async (): Promise<CheckpointDraft> => {
+    return scheduleOllamaGeneration(this.baseUrl, this.model, signal, async () => {
       signal?.throwIfAborted();
       try {
         return await this.request(input, undefined, signal);
       } catch (firstError) {
-        return this.request(input, "The previous response failed schema, safety, or evidence validation. Return corrected JSON with only supplied event IDs.", signal);
+        if (!(firstError instanceof OllamaCheckpointValidationError)) throw firstError;
+        signal?.throwIfAborted();
+        try {
+          return await this.request(input, "The previous response failed schema, safety, or evidence validation. Return corrected JSON with only supplied event IDs.", signal);
+        } catch (repairError) {
+          if (!(repairError instanceof OllamaCheckpointValidationError)) throw repairError;
+          throw publicValidationError(repairError);
+        }
       }
-    };
-    const queued = ollamaQueue.then(run, run);
-    ollamaQueue = queued.then(() => undefined, () => undefined);
-    return queued;
+    });
   }
 }

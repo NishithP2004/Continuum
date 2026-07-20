@@ -2,12 +2,11 @@
   "manifest_version": 3,
   "name": "Continuum Context Collector",
   "description": "Sends sanitized metadata for the foreground allowlisted tab to the local Continuum engine.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimum_chrome_version": "114",
   "incognito": "not_allowed",
-  "permissions": ["storage", "alarms"],
-  "optional_permissions": ["tabs"],
-  "optional_host_permissions": [
+  "permissions": ["storage", "alarms", "tabs"],
+  "host_permissions": [
     "http://127.0.0.1:43117/*",
     "http://localhost:43117/*"
   ],

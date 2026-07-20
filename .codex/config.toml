@@ -1,6 +1,6 @@
 [mcp_servers.continuum]
 command = "./script/run_mcp.sh"
 args = []
-enabled_tools = ["current", "timeline", "search", "resume", "diff"]
+enabled_tools = ["current", "timeline", "search", "resume", "diff", "graph"]
 startup_timeout_sec = 10
 tool_timeout_sec = 30

@@ -15,12 +15,6 @@ struct TimelineView: View {
                         systemImage: "clock.badge.questionmark"
                     )
                 } else {
-                    if store.checkpoints.contains(where: { $0.provider == "deterministic" }) {
-                        Label("Synthetic deterministic replay", systemImage: "testtube.2")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel("Synthetic deterministic replay fixture")
-                    }
                     ForEach(store.checkpoints) { checkpoint in
                         InspectorCard(checkpoint.focus, systemImage: "bookmark.fill") {
                             Text(checkpoint.summary)
@@ -32,11 +26,7 @@ struct TimelineView: View {
                                     DisplayFormatting.relativeTimestamp(checkpoint.createdAt),
                                     systemImage: "clock"
                                 )
-                                if checkpoint.provider == "deterministic" {
-                                    Label("Synthetic replay", systemImage: "testtube.2")
-                                } else {
-                                    Label(checkpoint.provider, systemImage: "cpu")
-                                }
+                                Label(checkpoint.provider, systemImage: "cpu")
                                 Text(checkpoint.id)
                                     .font(.caption2.monospaced())
                                     .lineLimit(1)

@@ -1,16 +1,25 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import {
   classifyCommand,
   sanitizeCwd,
   sanitizeExitCode,
 } from "./privacy.mjs";
 import { MAX_QUEUE_EVENTS, pruneQueue } from "./queue-policy.mjs";
-import { resolveProjectId } from "./project-identity.mjs";
+import {
+  applyTerminalPolicy,
+  currentPrivacyPolicy,
+  prepareTerminalSession,
+} from "./policy.mjs";
+import {
+  hybridLogicalClock,
+  repositoryRoot,
+  resolveDeviceId,
+  resolveProjectIdentity,
+} from "./project-identity.mjs";
 
 const ENDPOINT = process.env.CONTINUUM_ENDPOINT ?? "http://127.0.0.1:43117";
 const STATE_ROOT = process.env.CONTINUUM_ZSH_STATE_DIR
@@ -18,6 +27,9 @@ const STATE_ROOT = process.env.CONTINUUM_ZSH_STATE_DIR
   : path.join(os.homedir(), ".continuum", "zsh");
 const SESSION_DIR = path.join(STATE_ROOT, "sessions");
 const QUEUE_DIR = path.join(STATE_ROOT, "queue");
+const POLICY_FILE = process.env.CONTINUUM_PRIVACY_POLICY_FILE
+  ? path.resolve(process.env.CONTINUUM_PRIVACY_POLICY_FILE)
+  : path.join(STATE_ROOT, "privacy-policy-v1.json");
 
 function digest(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -50,31 +62,16 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function repositoryFor(cwd) {
-  const result = spawnSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: 500,
-  });
-  return result.status === 0 ? result.stdout.trim() : cwd;
-}
-
-function sanitizeProjectName(repoRoot) {
-  return path.basename(repoRoot)
-    .normalize("NFKC")
-    .replace(/[^A-Za-z0-9._@+-]/g, "-")
-    .slice(0, 80) || "project";
-}
-
 function validateEndpoint(raw) {
   const url = new URL(raw);
   if (
     url.protocol !== "http:" ||
     !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+    url.port !== "43117" ||
     url.username ||
     url.password
   ) {
-    throw new Error("Continuum endpoint must be loopback HTTP");
+    throw new Error("Continuum endpoint must use the fixed loopback port 43117");
   }
   return url.toString().replace(/\/$/, "");
 }
@@ -86,10 +83,12 @@ async function storeJson(file, value) {
   await rename(temporary, file);
 }
 
-async function queue(event) {
-  await pruneQueue(QUEUE_DIR, { maxEntries: MAX_QUEUE_EVENTS - 1 });
-  await storeJson(path.join(QUEUE_DIR, `${safeId(event.id)}.json`), event);
-  await pruneQueue(QUEUE_DIR);
+async function queue(event, policy) {
+  const sanitized = applyTerminalPolicy(event, policy);
+  if (!sanitized) return;
+  await pruneQueue(QUEUE_DIR, { maxEntries: MAX_QUEUE_EVENTS - 1, retentionHours: policy.retentionHours });
+  await storeJson(path.join(QUEUE_DIR, `${safeId(sanitized.id)}.json`), sanitized);
+  await pruneQueue(QUEUE_DIR, { retentionHours: policy.retentionHours });
 }
 
 async function token() {
@@ -106,9 +105,41 @@ async function token() {
   }
 }
 
-async function flush() {
-  await pruneQueue(QUEUE_DIR);
+async function policyAndToken() {
   const bearer = await token();
+  const policy = await currentPrivacyPolicy({
+    endpoint: validateEndpoint(ENDPOINT),
+    token: bearer,
+    cacheFile: POLICY_FILE,
+  });
+  return { bearer, policy };
+}
+
+async function reconcileQueue(policy) {
+  let names;
+  try {
+    names = (await readdir(QUEUE_DIR)).filter((name) => /^[A-Za-z0-9-]+\.json$/.test(name));
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw error;
+  }
+  for (const name of names) {
+    const file = path.join(QUEUE_DIR, name);
+    try {
+      const event = JSON.parse(await readFile(file, "utf8"));
+      const sanitized = applyTerminalPolicy(event, policy);
+      if (sanitized) await storeJson(file, sanitized);
+      else await unlink(file).catch(() => undefined);
+    } catch {
+      await unlink(file).catch(() => undefined);
+    }
+  }
+}
+
+async function flush(current) {
+  const { bearer, policy } = current ?? await policyAndToken();
+  await pruneQueue(QUEUE_DIR, { retentionHours: policy.retentionHours });
+  await reconcileQueue(policy);
   if (!bearer) return;
   let names;
   try {
@@ -139,59 +170,76 @@ async function flush() {
   await Promise.all(entries.map(({ name }) => unlink(path.join(QUEUE_DIR, name)).catch(() => undefined)));
 }
 
-function baseEvent({ eventType, projectId, sessionId, title, attributes, privacy, relevance, confidence = 1 }) {
+function baseEvent({ eventType, identity, deviceId, sessionId, title, attributes, privacy, relevance, confidence = 1 }) {
   const occurredAt = new Date().toISOString();
   const id = randomUUID();
   return {
-    version: "1",
+    version: "2",
     id,
+    deviceId,
     occurredAt,
+    hlc: hybridLogicalClock(deviceId),
     source: "terminal",
     eventType,
-    projectId,
+    ...(identity.projectId ? { projectId: identity.projectId } : {}),
+    projectLocator: {
+      localAlias: identity.localAlias,
+      ...(identity.repositoryFingerprint ? { repositoryFingerprint: identity.repositoryFingerprint } : {}),
+    },
     sessionId,
     title,
-    attributes,
+    attributes: { ...attributes, projectName: identity.normalizedName },
     privacy,
     relevance,
     confidence,
-    dedupeKey: digest(`terminal\0${eventType}\0${projectId}\0${sessionId}\0${JSON.stringify(attributes)}\0${occurredAt}`),
+    dedupeKey: digest(`terminal\0${eventType}\0${identity.localAlias}\0${sessionId}\0${JSON.stringify(attributes)}\0${occurredAt}`),
   };
 }
 
 async function start(args) {
   const sessionId = safeId(args.get("session"));
   const commandId = safeId(args.get("command-id"));
-  const cwd = path.resolve(args.get("cwd") || process.cwd());
+  const current = await policyAndToken();
+  const { policy } = current;
+  if (!policy.sources.terminal) {
+    await flush(current);
+    return;
+  }
+  const requestedCwd = path.resolve(args.get("cwd") || process.cwd());
+  const cwd = await realpath(requestedCwd).catch(() => requestedCwd);
   const raw = await readStdin();
   const classification = classifyCommand(raw);
-  const repoRoot = repositoryFor(cwd);
-  const projectId = resolveProjectId(repoRoot);
+  const repoRoot = repositoryRoot(cwd);
+  const identity = resolveProjectIdentity(repoRoot);
+  const deviceId = resolveDeviceId();
   if (!classification.keep) {
     await queue(baseEvent({
       eventType: "privacy.drop.aggregate",
-      projectId,
+      identity,
+      deviceId,
       sessionId,
       title: "Sensitive terminal event dropped",
       attributes: { rule: classification.reason, count: 1 },
       privacy: { classification: "public", rules: ["aggregate-only", classification.reason] },
       relevance: { decision: "keep", reason: "privacy-audit-counter" },
-    }));
+    }), policy);
     return;
   }
   // The persisted state is already sanitized. The raw command goes out of scope here.
-  await storeJson(path.join(SESSION_DIR, `${commandId}.json`), {
+  const session = prepareTerminalSession({
     version: 1,
     commandId,
     sessionId,
     startedAtMs: Date.now(),
-    projectId,
-    projectName: sanitizeProjectName(repoRoot),
+    identity,
+    deviceId,
     cwd: sanitizeCwd(repoRoot, cwd),
     shape: classification.shape,
     confidence: classification.confidence,
     reason: classification.reason,
-  });
+  }, policy);
+  if (session) await storeJson(path.join(SESSION_DIR, `${commandId}.json`), session);
+  else await flush(current);
 }
 
 async function complete(args) {
@@ -210,17 +258,25 @@ async function complete(args) {
   }
   await unlink(stateFile).catch(() => undefined);
   if (state.sessionId !== sessionId || state.commandId !== commandId) return;
+  const current = await policyAndToken();
+  const prepared = prepareTerminalSession(state, current.policy);
+  if (!prepared) {
+    await flush(current);
+    return;
+  }
   const durationMs = Math.max(0, Math.min(86_400_000, Date.now() - Number(state.startedAtMs)));
   const exitCode = sanitizeExitCode(args.get("exit-code"));
   await queue(baseEvent({
     eventType: "command.completed",
-    projectId: state.projectId,
+    identity: prepared.identity,
+    deviceId: prepared.deviceId,
     sessionId,
-    title: `${state.shape} ${exitCode === 0 ? "succeeded" : "failed"}`,
+    title: prepared.shape
+      ? `${prepared.shape} ${exitCode === 0 ? "succeeded" : "failed"}`
+      : "Terminal command activity",
     attributes: {
-      commandShape: state.shape,
-      cwd: state.cwd,
-      projectName: state.projectName,
+      ...(prepared.shape ? { commandShape: prepared.shape } : {}),
+      ...(prepared.cwd ? { cwd: prepared.cwd } : {}),
       durationMs,
       exitCode,
     },
@@ -228,10 +284,10 @@ async function complete(args) {
       classification: "personal",
       rules: ["command-shape-only", "no-terminal-output", "repository-relative-cwd"],
     },
-    relevance: { decision: "keep", reason: state.reason },
-    confidence: state.confidence,
-  }));
-  await flush();
+    relevance: { decision: "keep", reason: prepared.reason },
+    confidence: prepared.confidence,
+  }), current.policy);
+  await flush(current);
 }
 
 const [mode, ...rest] = process.argv.slice(2);

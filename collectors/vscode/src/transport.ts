@@ -1,5 +1,6 @@
-import type { EventBatchV1, NormalizedEventV1 } from "./types";
+import type { EventBatchV2, NormalizedEventV2Draft } from "./types";
 import { DurableEventQueue } from "./queue";
+import { applyVscodePolicy, PrivacyPolicyCache } from "./policy";
 
 export function validateLoopbackEndpoint(input: string): string {
   const url = new URL(input);
@@ -7,8 +8,8 @@ export function validateLoopbackEndpoint(input: string): string {
     url.hostname === "127.0.0.1" ||
     url.hostname === "localhost" ||
     url.hostname === "[::1]";
-  if (url.protocol !== "http:" || !loopback || url.username || url.password) {
-    throw new Error("Continuum endpoint must be an unauthenticated loopback HTTP URL");
+  if (url.protocol !== "http:" || !loopback || url.port !== "43117" || url.username || url.password) {
+    throw new Error("Continuum endpoint must be the fixed unauthenticated loopback origin on port 43117");
   }
   url.pathname = url.pathname.replace(/\/$/, "");
   url.search = "";
@@ -23,10 +24,17 @@ export class EventTransport {
     private readonly queue: DurableEventQueue,
     private readonly getEndpoint: () => string,
     private readonly getToken: () => Promise<string | undefined>,
+    private readonly policies: PrivacyPolicyCache,
   ) {}
 
-  async submit(event: NormalizedEventV1): Promise<void> {
-    await this.queue.enqueue(event);
+  async submit(event: NormalizedEventV2Draft): Promise<void> {
+    const policy = await this.policies.current();
+    const sanitized = applyVscodePolicy(event, policy);
+    if (!sanitized) {
+      await this.flush();
+      return;
+    }
+    await this.queue.enqueue(sanitized, policy.retentionHours);
     await this.flush();
   }
 
@@ -40,13 +48,17 @@ export class EventTransport {
   }
 
   private async flushInner(): Promise<void> {
-    const pending = await this.queue.peek(100);
+    const policy = await this.policies.current(true);
+    const pending = (await this.queue.reconcile(
+      (event) => applyVscodePolicy(event, policy),
+      policy.retentionHours,
+    )).slice(0, 100);
     if (pending.length === 0) return;
     const token = (await this.getToken())?.trim();
     if (!token) return;
 
     const endpoint = validateLoopbackEndpoint(this.getEndpoint());
-    const body: EventBatchV1 = { events: pending };
+    const body: EventBatchV2 = { events: pending };
     const response = await fetch(`${endpoint}/v1/events/batch`, {
       method: "POST",
       headers: {
@@ -59,6 +71,6 @@ export class EventTransport {
     if (!response.ok) {
       throw new Error(`Continuum engine rejected events (${response.status})`);
     }
-    await this.queue.remove(new Set(pending.map((event) => event.id)));
+    await this.queue.remove(new Set(pending.map((event) => event.id)), policy.retentionHours);
   }
 }

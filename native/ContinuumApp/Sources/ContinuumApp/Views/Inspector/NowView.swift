@@ -8,6 +8,18 @@ struct NowView: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ConnectionBanner(status: store.connection)
 
+                if store.snapshot.activeProject == nil, store.currentCheckpoint == nil {
+                    LiveOnboardingCard(store: store)
+                }
+
+                InspectorCard("System Health", systemImage: "heart.text.square") {
+                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                        ForEach(store.health.overview.items) { item in
+                            HealthGridRow(item: item)
+                        }
+                    }
+                }
+
                 HStack(spacing: 12) {
                     MetricTile(
                         title: "Pending events",
@@ -82,7 +94,7 @@ struct NowView: View {
                             EvidenceRows(items: checkpoint.questions)
                         }
                     }
-                } else {
+                } else if store.snapshot.activeProject != nil {
                     EmptySectionView(
                         title: "No checkpoint yet",
                         message: "Capture a few relevant events, then choose Checkpoint Now.",
@@ -91,6 +103,42 @@ struct NowView: View {
                 }
             }
             .padding(20)
+        }
+    }
+}
+
+private struct HealthGridRow: View {
+    let item: NativeHealthItem
+
+    var body: some View {
+        GridRow {
+            Label(item.subsystem.title, systemImage: systemImage)
+                .foregroundStyle(tint)
+            Text(item.status.capitalized)
+                .font(.callout.weight(.medium))
+            Text(item.detail ?? "")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .help(item.detail ?? "")
+        }
+    }
+
+    private var systemImage: String {
+        switch item.severity {
+        case .ready: "checkmark.circle.fill"
+        case .neutral: "circle.dotted"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch item.severity {
+        case .ready: .green
+        case .neutral: .secondary
+        case .warning: .orange
+        case .error: .red
         }
     }
 }

@@ -69,6 +69,7 @@ struct ActivityView: View {
         case "terminal", "zsh": "terminal.fill"
         case "git": "point.3.connected.trianglepath.dotted"
         case "chrome", "browser": "globe"
+        case "os": "macwindow"
         default: "circle.grid.cross"
         }
     }

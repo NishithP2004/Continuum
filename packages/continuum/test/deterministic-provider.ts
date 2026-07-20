@@ -1,18 +1,23 @@
-import type { CheckpointDraft, EvidenceItem, NormalizedEventV1 } from "@continuum/contracts";
-import type { CheckpointInput, CheckpointProvider, ProviderHealth } from "./types.js";
-import { extractEvidenceEntities } from "./entities.js";
+import type { CheckpointDraft, EvidenceItem, NormalizedEvent } from "@continuum/contracts";
+import type { CheckpointInput, CheckpointProvider, ProviderHealth } from "../src/providers/types.js";
+import { extractEvidenceEntities } from "../src/providers/entities.js";
 
-function evidence(event: NormalizedEventV1, text = event.title): EvidenceItem {
+function evidence(event: NormalizedEvent, text = event.title): EvidenceItem {
   return { text: text.slice(0, 400), eventIds: [event.id] };
 }
 
-function statusOf(event: NormalizedEventV1): string | undefined {
-  return typeof event.attributes.status === "string" ? event.attributes.status : undefined;
+function statusOf(event: NormalizedEvent): string | undefined {
+  if (typeof event.attributes.status === "string") return event.attributes.status;
+  if (/\b(?:resolved|fixed|closed)\b/i.test(event.title)) return "resolved";
+  if (/\bdisproven\b|\bnot the cause\b/i.test(event.title)) return "disproven";
+  if (/\bsupported\b/i.test(event.title)) return "supported";
+  return undefined;
 }
 
-export class DeterministicProvider implements CheckpointProvider {
+/** Test-only provider. It is excluded from the production TypeScript build. */
+export class DeterministicTestProvider implements CheckpointProvider {
   readonly id = "deterministic" as const;
-  readonly model = "fixture-rules-v1";
+  readonly model = "test-fixture-rules-v1";
 
   async health(): Promise<ProviderHealth> {
     return { status: "available" };
@@ -44,18 +49,14 @@ export class DeterministicProvider implements CheckpointProvider {
       if (type.includes("progress") || type.includes("commit") || (type.includes("command") && Number(event.attributes.exitCode) === 0)) {
         progress.push(evidence(event));
       }
-
     }
 
     if (progress.length === 0 && input.events[0]) progress.push(evidence(input.events[0]));
     const last = input.events.at(-1);
-    const focus = last?.title ?? input.previousCheckpoint?.focus ?? goal;
-    const summary = input.events.slice(-3).map((event) => event.title).join(" • ").slice(0, 1200);
-
     return {
       goal,
-      focus,
-      summary,
+      focus: last?.title ?? input.previousCheckpoint?.focus ?? goal,
+      summary: input.events.slice(-3).map((event) => event.title).join(" • ").slice(0, 1200),
       progress: progress.slice(0, 12),
       blockers: blockers.slice(0, 12),
       hypotheses: hypotheses.slice(0, 12),

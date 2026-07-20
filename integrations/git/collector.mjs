@@ -11,7 +11,12 @@ import {
   sanitizeSubject,
 } from "./privacy.mjs";
 import { MAX_QUEUE_EVENTS, pruneQueue } from "./queue-policy.mjs";
-import { resolveProjectId } from "./project-identity.mjs";
+import { applyGitPolicy, currentPrivacyPolicy } from "./policy.mjs";
+import {
+  hybridLogicalClock,
+  resolveDeviceId,
+  resolveProjectIdentity,
+} from "./project-identity.mjs";
 
 const EVENT_TYPES = {
   "post-commit": "commit.created",
@@ -39,10 +44,11 @@ function validateEndpoint(input) {
   if (
     url.protocol !== "http:" ||
     !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+    url.port !== "43117" ||
     url.username ||
     url.password
   ) {
-    throw new Error("Continuum endpoint must be loopback HTTP");
+    throw new Error("Continuum endpoint must use the fixed loopback port 43117");
   }
   return url.toString().replace(/\/$/, "");
 }
@@ -63,17 +69,23 @@ async function atomicJson(file, value) {
   await rename(temporary, file);
 }
 
-function makeEvent({ eventType, projectId, title, attributes, privacyRules, confidence = 1 }) {
+function makeEvent({ eventType, identity, deviceId, title, attributes, privacyRules, confidence = 1 }) {
   const occurredAt = new Date().toISOString();
   return {
-    version: "1",
+    version: "2",
     id: randomUUID(),
+    deviceId,
     occurredAt,
+    hlc: hybridLogicalClock(deviceId),
     source: "git",
     eventType,
-    projectId,
+    ...(identity.projectId ? { projectId: identity.projectId } : {}),
+    projectLocator: {
+      localAlias: identity.localAlias,
+      ...(identity.repositoryFingerprint ? { repositoryFingerprint: identity.repositoryFingerprint } : {}),
+    },
     title,
-    attributes,
+    attributes: { ...attributes, projectName: identity.normalizedName },
     privacy: {
       classification: eventType === "privacy.drop.aggregate" ? "public" : "personal",
       rules: privacyRules,
@@ -85,7 +97,7 @@ function makeEvent({ eventType, projectId, title, attributes, privacyRules, conf
         : "repository-hook-metadata",
     },
     confidence,
-    dedupeKey: digest(`git\0${eventType}\0${projectId}\0${JSON.stringify(attributes)}\0${occurredAt}`),
+    dedupeKey: digest(`git\0${eventType}\0${identity.localAlias}\0${JSON.stringify(attributes)}\0${occurredAt}`),
   };
 }
 
@@ -103,15 +115,44 @@ async function bearerToken() {
   }
 }
 
-async function queueEvent(queueDir, event) {
-  await pruneQueue(queueDir, { maxEntries: MAX_QUEUE_EVENTS - 1 });
-  await atomicJson(path.join(queueDir, `${event.id}.json`), event);
-  await pruneQueue(queueDir);
+async function queueEvent(queueDir, event, policy) {
+  const sanitized = applyGitPolicy(event, policy);
+  if (!sanitized) return;
+  await pruneQueue(queueDir, { maxEntries: MAX_QUEUE_EVENTS - 1, retentionHours: policy.retentionHours });
+  await atomicJson(path.join(queueDir, `${sanitized.id}.json`), sanitized);
+  await pruneQueue(queueDir, { retentionHours: policy.retentionHours });
 }
 
-async function flush(queueDir) {
-  await pruneQueue(queueDir);
-  const token = await bearerToken();
+async function reconcileQueue(queueDir, policy) {
+  let names;
+  try {
+    names = (await readdir(queueDir)).filter((name) => /^[0-9a-f-]+\.json$/i.test(name));
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw error;
+  }
+  for (const name of names) {
+    const file = path.join(queueDir, name);
+    try {
+      const event = JSON.parse(await readFile(file, "utf8"));
+      const sanitized = applyGitPolicy(event, policy);
+      if (sanitized) await atomicJson(file, sanitized);
+      else await unlink(file).catch(() => undefined);
+    } catch {
+      await unlink(file).catch(() => undefined);
+    }
+  }
+}
+
+async function flush(queueDir, current) {
+  const token = current?.token ?? await bearerToken();
+  const endpoint = validateEndpoint(process.env.CONTINUUM_ENDPOINT ?? "http://127.0.0.1:43117");
+  const cacheFile = process.env.CONTINUUM_PRIVACY_POLICY_FILE
+    ? path.resolve(process.env.CONTINUUM_PRIVACY_POLICY_FILE)
+    : path.join(path.dirname(queueDir), "privacy-policy-v1.json");
+  const policy = current?.policy ?? await currentPrivacyPolicy({ endpoint, token, cacheFile });
+  await pruneQueue(queueDir, { retentionHours: policy.retentionHours });
+  await reconcileQueue(queueDir, policy);
   if (!token) return;
   let names;
   try {
@@ -129,7 +170,6 @@ async function flush(queueDir) {
     }
   }
   if (pending.length === 0) return;
-  const endpoint = validateEndpoint(process.env.CONTINUUM_ENDPOINT ?? "http://127.0.0.1:43117");
   const response = await fetch(`${endpoint}/v1/events/batch`, {
     method: "POST",
     headers: {
@@ -173,11 +213,23 @@ async function main() {
   const gitDir = git(["rev-parse", "--absolute-git-dir"], cwd);
   if (!repoRoot || !gitDir) return;
   const queueDir = path.join(gitDir, "continuum", "queue");
-  const projectId = resolveProjectId(
+  const endpoint = validateEndpoint(process.env.CONTINUUM_ENDPOINT ?? "http://127.0.0.1:43117");
+  const token = await bearerToken();
+  const cacheFile = process.env.CONTINUUM_PRIVACY_POLICY_FILE
+    ? path.resolve(process.env.CONTINUUM_PRIVACY_POLICY_FILE)
+    : path.join(gitDir, "continuum", "privacy-policy-v1.json");
+  const policy = await currentPrivacyPolicy({ endpoint, token, cacheFile });
+  const current = { token, policy };
+  if (!policy.sources.git) {
+    await flush(queueDir, current);
+    return;
+  }
+  const identity = resolveProjectIdentity(
     repoRoot,
     process.env.CONTINUUM_PROJECT_ID,
     git(["config", "--local", "--get", "continuum.projectId"], repoRoot),
   );
+  const deviceId = resolveDeviceId();
   const commit = git(["rev-parse", "HEAD"], repoRoot);
   if (!isCommitId(commit)) return;
   const branch = sanitizeRef(git(["symbolic-ref", "--short", "-q", "HEAD"], repoRoot));
@@ -206,22 +258,24 @@ async function main() {
   }
   await queueEvent(queueDir, makeEvent({
     eventType: EVENT_TYPES[hook],
-    projectId,
+    identity,
+    deviceId,
     title: `${EVENT_TYPES[hook]} ${commit.slice(0, 8)}`,
     attributes,
     privacyRules,
-  }));
+  }), policy);
 
   for (const [rule, count] of paths.dropped) {
     await queueEvent(queueDir, makeEvent({
       eventType: "privacy.drop.aggregate",
-      projectId,
+      identity,
+      deviceId,
       title: "Sensitive Git metadata dropped",
       attributes: { rule, count },
       privacyRules: ["aggregate-only", rule],
-    }));
+    }), policy);
   }
-  await flush(queueDir);
+  await flush(queueDir, current);
 }
 
 await main();

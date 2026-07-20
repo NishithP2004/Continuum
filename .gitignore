@@ -1,5 +1,11 @@
 node_modules/
 dist/
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 .continuum/
 .continuum-demo/
 .swiftpm/
@@ -9,7 +15,10 @@ native/ContinuumApp/.build/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.sqlite.backup-v*
 .DS_Store
 collectors/vscode/*.vsix
 collectors/vscode/out/
 .continuum-runtime/
+apps/web/test-results/
+apps/web/playwright-report/

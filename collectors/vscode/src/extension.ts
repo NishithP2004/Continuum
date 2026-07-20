@@ -2,13 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import * as vscode from "vscode";
 import { inspectWorkspacePath, sanitizeLabel } from "./privacy";
-import { resolveProjectId } from "./project-identity";
+import {
+  hybridLogicalClock,
+  resolveDeviceId,
+  resolveProjectIdentity,
+  type ProjectIdentity,
+} from "./project-identity";
 import { DurableEventQueue } from "./queue";
+import { PrivacyPolicyCache } from "./policy";
 import { EventTransport } from "./transport";
-import type { NormalizedEventV1 } from "./types";
+import type { NormalizedEventV2, NormalizedEventV2Draft } from "./types";
 
 const TOKEN_KEY = "continuum.localBearerToken";
 const SESSION_ID = randomUUID();
+const PROJECT_IDENTITIES = new Map<string, ProjectIdentity>();
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -27,35 +34,50 @@ function captureEnabled(): boolean {
     .get<boolean>("captureEnabled", true);
 }
 
-function projectIdFor(workspace: vscode.WorkspaceFolder): string {
+function projectIdentityFor(workspace: vscode.WorkspaceFolder): ProjectIdentity {
   const configured = vscode.workspace
     .getConfiguration("continuum", workspace.uri)
     .get<string>("projectId", "");
-  return resolveProjectId(
+  const override = configured || process.env.CONTINUUM_PROJECT_ID || "";
+  const cacheKey = `${workspace.uri.fsPath}\0${override}`;
+  const cached = PROJECT_IDENTITIES.get(cacheKey);
+  if (cached) return cached;
+  const identity = resolveProjectIdentity(
     workspace.uri.fsPath,
-    configured || process.env.CONTINUUM_PROJECT_ID,
+    override,
   );
+  PROJECT_IDENTITIES.set(cacheKey, identity);
+  return identity;
 }
 
 function eventFor(
   workspace: vscode.WorkspaceFolder,
-  eventType: NormalizedEventV1["eventType"],
+  deviceId: string,
+  eventType: NormalizedEventV2["eventType"],
   title: string,
-  attributes: NormalizedEventV1["attributes"],
+  attributes: NormalizedEventV2["attributes"],
   privacyRule: string,
-): NormalizedEventV1 {
+): NormalizedEventV2Draft {
   const occurredAt = new Date().toISOString();
-  const projectId = projectIdFor(workspace);
+  const identity = projectIdentityFor(workspace);
   const event = {
-    version: "1" as const,
+    version: "2" as const,
     id: randomUUID(),
+    deviceId,
     occurredAt,
+    hlc: hybridLogicalClock(deviceId),
     source: "vscode" as const,
     eventType,
-    projectId,
+    ...(identity.projectId ? { projectId: identity.projectId } : {}),
+    projectLocator: {
+      localAlias: identity.localAlias,
+      ...(identity.repositoryFingerprint
+        ? { repositoryFingerprint: identity.repositoryFingerprint }
+        : {}),
+    },
     sessionId: SESSION_ID,
     title,
-    attributes,
+    attributes: { ...attributes, projectName: identity.normalizedName },
     privacy: {
       classification: "personal" as const,
       rules: [privacyRule, "no-file-contents", "workspace-relative-paths"],
@@ -68,27 +90,36 @@ function eventFor(
     dedupeKey: "",
   };
   event.dedupeKey = hash(
-    `${event.source}\0${event.eventType}\0${projectId}\0${JSON.stringify(attributes)}\0${occurredAt.slice(0, 16)}`,
+    `${event.source}\0${event.eventType}\0${identity.localAlias}\0${JSON.stringify(attributes)}\0${occurredAt.slice(0, 16)}`,
   );
   return event;
 }
 
 function privacyDropEvent(
   workspace: vscode.WorkspaceFolder,
+  deviceId: string,
   rule: string,
-): NormalizedEventV1 {
+): NormalizedEventV2Draft {
   const occurredAt = new Date().toISOString();
-  const projectId = projectIdFor(workspace);
+  const identity = projectIdentityFor(workspace);
   return {
-    version: "1",
+    version: "2",
     id: randomUUID(),
+    deviceId,
     occurredAt,
+    hlc: hybridLogicalClock(deviceId),
     source: "vscode",
     eventType: "privacy.drop.aggregate",
-    projectId,
+    ...(identity.projectId ? { projectId: identity.projectId } : {}),
+    projectLocator: {
+      localAlias: identity.localAlias,
+      ...(identity.repositoryFingerprint
+        ? { repositoryFingerprint: identity.repositoryFingerprint }
+        : {}),
+    },
     sessionId: SESSION_ID,
     title: "Sensitive editor event dropped",
-    attributes: { rule, count: 1 },
+    attributes: { rule, count: 1, projectName: identity.normalizedName },
     privacy: {
       classification: "public",
       rules: ["aggregate-only", rule],
@@ -98,29 +129,38 @@ function privacyDropEvent(
       reason: "privacy-audit-counter",
     },
     confidence: 1,
-    dedupeKey: hash(`vscode\0drop\0${projectId}\0${rule}\0${occurredAt}`),
+    dedupeKey: hash(`vscode\0drop\0${identity.localAlias}\0${rule}\0${occurredAt}`),
   };
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  const deviceId = resolveDeviceId();
   const queue = new DurableEventQueue(
     vscode.Uri.joinPath(context.globalStorageUri, "sanitized-events.json").fsPath,
   );
+  const getEndpoint = (): string =>
+    vscode.workspace
+      .getConfiguration("continuum")
+      .get<string>("endpoint", "http://127.0.0.1:43117");
+  const getToken = async (): Promise<string | undefined> =>
+    (await context.secrets.get(TOKEN_KEY)) || process.env.CONTINUUM_TOKEN;
+  const policies = new PrivacyPolicyCache(
+    vscode.Uri.joinPath(context.globalStorageUri, "privacy-policy-v1.json").fsPath,
+    getEndpoint,
+    getToken,
+  );
   const transport = new EventTransport(
     queue,
-    () =>
-      vscode.workspace
-        .getConfiguration("continuum")
-        .get<string>("endpoint", "http://127.0.0.1:43117"),
-    async () =>
-      (await context.secrets.get(TOKEN_KEY)) || process.env.CONTINUUM_TOKEN,
+    getEndpoint,
+    getToken,
+    policies,
   );
 
   const reportFailure = (error: unknown): void => {
     console.error("Continuum collector retained a sanitized event for retry:", error);
   };
 
-  const submit = (event: NormalizedEventV1): void => {
+  const submit = (event: NormalizedEventV2Draft): void => {
     void transport.submit(event).catch(reportFailure);
   };
 
@@ -128,12 +168,14 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!captureEnabled() || !vscode.window.state.focused) return;
     const workspace = currentWorkspace();
     if (!workspace) return;
+    const projectName = projectIdentityFor(workspace).normalizedName;
     submit(
       eventFor(
         workspace,
+        deviceId,
         "workspace.focused",
-        `Focused ${sanitizeLabel(workspace.name)}`,
-        { workspace: sanitizeLabel(workspace.name) },
+        "Focused VS Code workspace",
+        { workspace: projectName },
         "workspace-name-only",
       ),
     );
@@ -152,7 +194,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
     if (!decision.keep || !decision.relativePath) {
       if (decision.classification === "confidential") {
-        submit(privacyDropEvent(workspace, decision.reason));
+        submit(privacyDropEvent(workspace, deviceId, decision.reason));
       }
       return;
     }
@@ -161,6 +203,7 @@ export function activate(context: vscode.ExtensionContext): void {
     submit(
       eventFor(
         workspace,
+        deviceId,
         eventType,
         `${eventType === "file.saved" ? "Saved" : "Opened"} ${path.posix.basename(relativePath)}`,
         { path: relativePath, languageId },

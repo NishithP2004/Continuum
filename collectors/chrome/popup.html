@@ -8,25 +8,16 @@
   </head>
   <body>
     <main>
-      <h1>Continuum</h1>
-      <p class="privacy">Only the foreground tab's allowlisted host and sanitized URL path are captured. Page titles and content stay out.</p>
-      <label>
-        Project ID
-        <input id="project" autocomplete="off" maxlength="80" placeholder="Paste output from npm run project-id" required />
-      </label>
-      <label>
-        Allowed domains
-        <textarea id="allowlist" rows="4" placeholder="developers.openai.com&#10;github.com"></textarea>
-      </label>
-      <label>
-        Local bearer token
-        <input id="token" type="password" autocomplete="off" placeholder="Stored for this browser session" />
-      </label>
-      <label class="toggle">
-        <input id="enabled" type="checkbox" />
-        Capture active allowlisted tabs
-      </label>
-      <button id="save">Connect and save</button>
+      <header><span class="mark">C</span><div><h1>Continuum</h1><p id="connection">Checking local engine…</p></div></header>
+      <section class="project" aria-live="polite">
+        <span class="label">Active project</span>
+        <strong id="project">Not detected</strong>
+        <span id="project-help">Open a project in VS Code or a Continuum-enabled terminal.</span>
+      </section>
+      <p class="privacy">Only an allowlisted foreground host and sanitized path can be captured. Page content, titles, queries, and cookies stay out.</p>
+      <label class="toggle"><input id="enabled" type="checkbox" />Capture active allowed tabs</label>
+      <button id="pair" type="button">Pair with Continuum</button>
+      <button id="capture" class="secondary" type="button">Capture current tab</button>
       <output id="status" aria-live="polite"></output>
     </main>
     <script src="popup.mjs" type="module"></script>

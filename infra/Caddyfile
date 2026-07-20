@@ -1,0 +1,7 @@
+{$CONTINUUM_DOMAIN:localhost} {
+	encode zstd gzip
+
+	@cloud path /health /mcp /mcp/* /v1/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/*
+	reverse_proxy @cloud cloud:43118
+	reverse_proxy web:80
+}

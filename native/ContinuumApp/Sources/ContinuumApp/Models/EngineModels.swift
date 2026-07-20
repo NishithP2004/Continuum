@@ -263,12 +263,15 @@ struct EngineSnapshot: Decodable, Equatable, Sendable {
         } else {
             let availability = try? values.decode(ProviderAvailability.self, forKey: .providerHealth)
             let selectedProvider = settings?.provider ?? .local
-            let availabilityValue = selectedProvider == .local
-                ? availability?.ollama
-                : availability?.openai
+            let availabilityValue: String?
+            switch selectedProvider {
+            case .local: availabilityValue = availability?.ollama
+            case .apple: availabilityValue = availability?.appleFoundation
+            case .openai: availabilityValue = availability?.openai
+            }
             provider = ProviderHealth(
-                provider: selectedProvider == .local ? "ollama" : "openai",
-                model: settings?.model ?? (selectedProvider == .local ? "gemma3n:e2b" : "gpt-5.6-terra"),
+                provider: selectedProvider.engineValue,
+                model: settings?.model ?? selectedProvider.defaultModel,
                 status: availabilityValue == "available" ? "ready" : (availabilityValue ?? "unknown"),
                 message: availabilityValue == "unavailable" ? "The selected checkpoint provider is unavailable." : nil,
                 cloudActive: selectedProvider == .openai
@@ -299,35 +302,60 @@ struct EngineSnapshot: Decodable, Equatable, Sendable {
 private struct ProviderAvailability: Decodable {
     let ollama: String
     let openai: String
+    let appleFoundation: String?
 }
 
 enum ProviderKind: String, CaseIterable, Codable, Sendable {
     case local
+    case apple
     case openai
 
     var title: String {
         switch self {
         case .local: "Local · Ollama"
+        case .apple: "Local · Apple"
         case .openai: "Cloud · OpenAI"
+        }
+    }
+
+    var engineValue: String {
+        switch self {
+        case .local: "ollama"
+        case .apple: "apple"
+        case .openai: "openai"
+        }
+    }
+
+    var defaultModel: String {
+        switch self {
+        case .local: "gemma3n:e2b"
+        case .apple: "apple-system-default"
+        case .openai: "gpt-5.6-terra"
         }
     }
 }
 
 struct ModelSettings: Decodable, Equatable, Sendable {
     var provider: ProviderKind
+    var chatProvider: ProviderKind
     var model: String
     var localModel: String
+    var appleModel: String
     var cloudModel: String
 
     init(
         provider: ProviderKind = .local,
+        chatProvider: ProviderKind? = nil,
         model: String = "gemma3n:e2b",
         localModel: String = "gemma3n:e2b",
+        appleModel: String = "apple-system-default",
         cloudModel: String = "gpt-5.6-terra"
     ) {
         self.provider = provider
+        self.chatProvider = chatProvider ?? provider
         self.model = model
         self.localModel = localModel
+        self.appleModel = appleModel
         self.cloudModel = cloudModel
     }
 
@@ -335,32 +363,84 @@ struct ModelSettings: Decodable, Equatable, Sendable {
         case provider
         case model
         case localModel
+        case appleModel
         case cloudModel
         case activeCheckpointProvider
+        case activeChatProvider
         case ollamaModel
+        case foundationModel
         case openaiModel
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let activeProvider = try values.decodeIfPresent(String.self, forKey: .activeCheckpointProvider)
-        if let providerValue = try values.decodeIfPresent(ProviderKind.self, forKey: .provider) {
-            provider = providerValue
+        if let providerValue = try values.decodeIfPresent(String.self, forKey: .provider) {
+            switch providerValue {
+            case "openai": provider = .openai
+            case "apple", "apple_foundation": provider = .apple
+            default: provider = .local
+            }
         } else {
-            provider = activeProvider == "openai" ? .openai : .local
+            switch activeProvider {
+            case "openai": provider = .openai
+            case "apple", "apple_foundation": provider = .apple
+            default: provider = .local
+            }
+        }
+        let activeChatProvider = try values.decodeIfPresent(String.self, forKey: .activeChatProvider)
+        switch activeChatProvider {
+        case "openai": chatProvider = .openai
+        case "apple", "apple_foundation": chatProvider = .apple
+        case "ollama", "local": chatProvider = .local
+        default: chatProvider = provider
         }
         localModel = try values.decodeIfPresent(String.self, forKey: .localModel)
             ?? values.decodeIfPresent(String.self, forKey: .ollamaModel)
             ?? "gemma3n:e2b"
+        appleModel = try values.decodeIfPresent(String.self, forKey: .appleModel)
+            ?? values.decodeIfPresent(String.self, forKey: .foundationModel)
+            ?? "apple-system-default"
         cloudModel = try values.decodeIfPresent(String.self, forKey: .cloudModel)
             ?? values.decodeIfPresent(String.self, forKey: .openaiModel)
             ?? "gpt-5.6-terra"
-        model = try values.decodeIfPresent(String.self, forKey: .model)
-            ?? (provider == .local ? localModel : cloudModel)
-        if provider == .local {
-            localModel = model
+        if let explicitModel = try values.decodeIfPresent(String.self, forKey: .model) {
+            model = explicitModel
         } else {
-            cloudModel = model
+            switch provider {
+            case .local: model = localModel
+            case .apple: model = appleModel
+            case .openai: model = cloudModel
+            }
         }
+        switch provider {
+        case .local: localModel = model
+        case .apple: appleModel = model
+        case .openai: cloudModel = model
+        }
+    }
+
+    func model(for provider: ProviderKind) -> String {
+        switch provider {
+        case .local: localModel
+        case .apple: appleModel
+        case .openai: cloudModel
+        }
+    }
+
+    func selecting(provider: ProviderKind, model rawModel: String) -> ModelSettings? {
+        let selectedModel = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selectedModel.isEmpty, selectedModel.count <= 200 else { return nil }
+
+        var updated = self
+        updated.provider = provider
+        updated.chatProvider = provider
+        updated.model = selectedModel
+        switch provider {
+        case .local: updated.localModel = selectedModel
+        case .apple: updated.appleModel = selectedModel
+        case .openai: updated.cloudModel = selectedModel
+        }
+        return updated
     }
 }

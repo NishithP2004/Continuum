@@ -40,7 +40,7 @@
         "continuum.endpoint": {
           "type": "string",
           "default": "http://127.0.0.1:43117",
-          "description": "Loopback URL of the Continuum engine. Non-loopback endpoints are rejected."
+          "description": "Fixed loopback origin of the Continuum engine. Only port 43117 is accepted."
         },
         "continuum.captureEnabled": {
           "type": "boolean",
@@ -50,8 +50,8 @@
         "continuum.projectId": {
           "type": "string",
           "default": "",
-          "maxLength": 80,
-          "description": "Optional shared project ID. Empty uses the canonical workspace-root ID; set this when the workspace root is not the repository root."
+          "format": "uuid",
+          "description": "Optional existing global project UUID. Empty lets Continuum match clones from their root commit and normalized repository name."
         }
       }
     }

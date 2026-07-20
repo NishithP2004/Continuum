@@ -48,3 +48,16 @@ test("retains only the newest events at the documented terminal cap", async (con
   assert.equal(remaining.has(names.at(-1)), true);
   assert.equal(MAX_QUEUE_EVENTS, 1_000);
 });
+
+test("terminal queue honors a tightened one-hour policy", async (context) => {
+  const queueDir = await mkdtemp(path.join(os.tmpdir(), "continuum-zsh-policy-retention-"));
+  context.after(() => rm(queueDir, { recursive: true, force: true }));
+  const nowMs = Date.parse("2026-07-18T12:00:00.000Z");
+  const old = await put(queueDir, new Date(nowMs - 2 * 60 * 60 * 1_000).toISOString());
+  const recent = await put(queueDir, new Date(nowMs - 30 * 60 * 1_000).toISOString());
+
+  await pruneQueue(queueDir, { nowMs, retentionHours: 1 });
+  const remaining = new Set(await readdir(queueDir));
+  assert.equal(remaining.has(old), false);
+  assert.equal(remaining.has(recent), true);
+});

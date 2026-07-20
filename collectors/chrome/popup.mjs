@@ -1,58 +1,42 @@
-import { normalizeAllowlist, sanitizeProjectId } from "./privacy.mjs";
-
-const CONFIG_KEY = "continuumCollectorConfigV1";
-const TOKEN_KEY = "continuumBearerToken";
-const ENDPOINT_ORIGINS = [
-  "http://127.0.0.1:43117/*",
-  "http://localhost:43117/*",
-];
-
+const connection = document.querySelector("#connection");
 const project = document.querySelector("#project");
-const allowlist = document.querySelector("#allowlist");
-const token = document.querySelector("#token");
+const projectHelp = document.querySelector("#project-help");
 const enabled = document.querySelector("#enabled");
+const pair = document.querySelector("#pair");
+const capture = document.querySelector("#capture");
 const status = document.querySelector("#status");
 
-async function load() {
-  const stored = await chrome.storage.local.get(CONFIG_KEY);
-  const config = stored[CONFIG_KEY] ?? {};
-  project.value = sanitizeProjectId(config.projectId);
-  allowlist.value = normalizeAllowlist(config.allowlist).join("\n");
-  enabled.checked = config.enabled === true;
-  const session = await chrome.storage.session.get(TOKEN_KEY);
-  token.value = session[TOKEN_KEY] ?? "";
+async function refresh() {
+  const state = await chrome.runtime.sendMessage({ type: "continuum.status" });
+  enabled.checked = state?.config?.enabled !== false;
+  pair.hidden = state?.paired === true;
+  capture.disabled = !state?.paired || !state?.lease;
+  connection.textContent = state?.paired ? "Paired with the local engine" : state?.pairing?.status === "pending" ? "Waiting for approval in Continuum" : "Not paired";
+  if (state?.lease) {
+    project.textContent = state.lease.projectName;
+    projectHelp.textContent = `Detected from ${state.lease.source}; expires ${new Date(state.lease.expiresAt).toLocaleTimeString()}.`;
+  } else {
+    project.textContent = "Not detected";
+    projectHelp.textContent = "Open a project in VS Code or a Continuum-enabled terminal.";
+  }
+  if (state?.paired && (state?.policy?.allowedDomains?.length ?? 0) === 0) status.textContent = "Add allowed domains in Continuum → Privacy.";
 }
 
-document.querySelector("#save").addEventListener("click", async () => {
-  const projectId = sanitizeProjectId(project.value);
-  if (!projectId) {
-    status.textContent = "Project ID is required. Copy it from `npm run --silent project-id -- /path/to/repository`.";
-    return;
-  }
-  status.textContent = "Requesting local permissions…";
-  const granted = await chrome.permissions.request({
-    permissions: ["tabs"],
-    origins: ENDPOINT_ORIGINS,
-  });
-  if (!granted) {
-    status.textContent = "Tabs and local-engine permissions are required.";
-    return;
-  }
-  const config = {
-    projectId,
-    allowlist: normalizeAllowlist(allowlist.value),
-    enabled: enabled.checked,
-  };
-  await chrome.storage.local.set({ [CONFIG_KEY]: config });
-  if (token.value.trim()) {
-    await chrome.storage.session.set({ [TOKEN_KEY]: token.value.trim() });
-  } else {
-    await chrome.storage.session.remove(TOKEN_KEY);
-  }
+pair.addEventListener("click", async () => {
+  status.textContent = "Creating a secure local pairing request…";
+  const result = await chrome.runtime.sendMessage({ type: "continuum.pair" });
+  status.textContent = result?.status === "paired" ? "Paired." : "Approve this request in Continuum, then reopen this popup.";
+  await refresh();
+});
+capture.addEventListener("click", async () => {
+  status.textContent = "Checking policy and active project…";
   await chrome.runtime.sendMessage({ type: "continuum.capture-now" });
-  status.textContent = config.enabled
-    ? "Connected. Only allowlisted foreground tabs are captured."
-    : "Saved with capture paused.";
+  status.textContent = "Current allowed tab captured.";
+  await refresh();
+});
+enabled.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({ type: "continuum.set-enabled", enabled: enabled.checked });
+  status.textContent = enabled.checked ? "Capture enabled." : "Capture paused for Chrome.";
 });
 
-void load();
+void refresh().catch(() => { connection.textContent = "Continuum engine is offline"; });

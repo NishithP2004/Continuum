@@ -1,163 +1,244 @@
-# Codex Collaboration and Decision Log
+# Codex collaboration and decision log
 
-Continuum was developed with Codex as an implementation collaborator: architecture decomposition, contract design, privacy review, parallel component implementation, deterministic tests, native SwiftUI shell work, collector boundaries, and submission documentation.
+Continuum was designed and implemented in collaboration with Codex. The human supplied the product direction, privacy posture, release scope, visual concepts, platform constraints, and acceptance criteria. Codex helped inspect the evolving repository, implement bounded workstreams, connect interfaces, write tests, identify trust-boundary gaps, and maintain this decision record.
 
-This document records decisions and reproducible evidence without fabricating a Codex session identifier. The primary `/feedback` session ID must be added after the final submission session exists.
+This document does not claim a test or external deployment succeeded. Final evidence belongs in [JUDGE_TESTING.md](JUDGE_TESTING.md) and must be recorded from the exact submission commit.
 
-## Required submission reference
+## Human-provided goals
 
-- **Primary Codex `/feedback` session ID:** `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]`
-- **Verified implementation commit:** `7f3e0ca2c881f28673caec0658e88c3c7a6d9571`
-- **Public repository:** `[PUBLIC_GITHUB_URL]`
-- **Demo video:** `[PUBLIC_YOUTUBE_URL]`
+The core product requirements were:
 
-## Collaboration workflow
+- treat context as infrastructure rather than a screenshot archive or chatbot transcript;
+- keep SQLite as the Mac’s local source of truth;
+- collect live macOS/developer metadata only and remove runtime fixtures/replay;
+- support a real Dock app plus persistent menu-bar controls;
+- provide cited native/PWA chat and an interactive graph;
+- support Apple Foundation Models, Ollama, and opt-in OpenAI without silent fallback;
+- make privacy controls configurable while keeping credential/content exclusions immutable;
+- identify projects globally across clones without exposing paths/remotes;
+- add self-hosted multi-device sync, Auth0, API keys, PostgreSQL, Neo4j, PWA, and remote MCP;
+- keep local stdio MCP read-only and add authenticated tenant-scoped Streamable HTTP MCP;
+- preserve macOS 14+ while runtime-gating Apple Foundation Models to macOS 26+.
 
-The implementation was organized outcome-first:
+The visual direction was supplied through approved desktop graph/chat, privacy, and mobile PWA concepts. Implementation translated those concepts into native SwiftUI and responsive React surfaces; the source concepts are development inputs, not public submission links.
 
-1. Define the judge-visible success condition: Codex resumes from a bounded, cited Context Pack with no pasted history.
-2. Encode strict shared contracts before wiring collectors or models.
-3. Build a visibly synthetic deterministic Friday-to-Monday replay so privacy, retrieval, Context Diff, and MCP behavior are reproducible without network/model availability.
-4. Add local/cloud providers behind the same schema and evidence validator.
-5. Build source-specific collectors with their privacy boundary inside the adapter.
-6. Add a native menu-bar inspector that exposes capture, baseline, cloud selection, privacy, provider health, and degraded retrieval.
-7. Document limitations and distinguish deterministic evidence from live/provider/clean-machine claims.
+## How Codex was used
 
-Parallel Codex workstreams covered the TypeScript engine/MCP, four collectors, SwiftUI app, and submission materials. Shared-file changes were coordinated around the common event contract and REST routes.
+Codex work was divided into repository-bounded streams so interfaces could be reviewed together:
+
+- shared V2 contracts, global project identity, SQLite migrations, privacy, HLC sync, graph, chat, and local APIs;
+- source-specific VS Code, zsh, Git, Chrome, and macOS collectors;
+- SwiftUI Dock/menu-bar app, Settings behavior, OS collectors, chat, graph, Auth0 PKCE, and Keychain integration;
+- Fastify/PostgreSQL/Neo4j synchronization, Auth0/API keys, remote context/chat/MCP, and Docker Compose;
+- React/Vite PWA transport, routes, graph/chat UX, responsiveness, and tests;
+- threat-boundary review, migration/revocation/secret tests, documentation, and live-only acceptance design.
+
+Codex also used repository inspection and executable tests to challenge plan assumptions. When an interface existed only on one side—for example, a Chrome challenge without an in-app approval surface, or an API key without a physical-device binding—the implementation was treated as incomplete rather than documented as finished.
 
 ## Decision log
 
-### Event metadata instead of screenshots
+### Semantic events instead of visual observation
 
-**Decision:** Observe explicit developer-tool events and source-specific metadata, not screen pixels or OS-wide accessibility state.
+**Decision:** Collect allowlisted tool/OS events, not screenshots or content.
 
-**Reason:** It minimizes sensitive collection, creates better semantic precision, and reduces context size. It also makes the privacy boundary testable per source.
+**Reason:** Semantic metadata is smaller, more precise, and can be sanitized before persistence or transport. It also makes source-specific privacy invariants testable.
 
-**Tradeoff:** Continuum cannot reconstruct arbitrary work performed outside installed adapters.
+**Tradeoff:** Continuum cannot reconstruct arbitrary on-screen activity or work performed outside enabled sources.
+
+### Live-only runtime
+
+**Decision:** Remove runtime fixture routes, seeded Context Packs/checkpoints, fixture providers from ordinary flows, and replay/loading controls.
+
+**Reason:** The app should prove real collection and should never let judges confuse deterministic fixture output with live user activity.
+
+**Tradeoff:** A live demo depends on functioning collectors and a configured provider. Synthetic fixtures remain only in automated tests, where they are appropriate and isolated.
 
 ### Two privacy gates
 
-**Decision:** Sanitize inside each adapter and repeat schema/allowlist/secret filtering before daemon persistence.
+**Decision:** Sanitize at each adapter and repeat strict validation/allowlisting/secret scanning before daemon persistence.
 
-**Reason:** Raw values should not enter a durable retry queue or cross a process boundary. The daemon must still treat collectors as untrusted inputs.
+**Reason:** Raw values should not enter a durable retry queue or cross a process boundary. The daemon must still treat a collector as untrusted.
 
-**Tradeoff:** Rules are duplicated and require contract coordination.
+**Tradeoff:** Some privacy logic is source-specific and duplicated by design; changes require contract coordination and tests on both sides.
 
-### SQLite over a separate graph service
+### Configurable policy with immutable protections
 
-**Decision:** Use embedded SQLite with FTS5, graph tables, and optional sqlite-vec.
+**Decision:** Let users control sources, selected metadata, retention, domain/path rules, and personal cloud eligibility, but encode secret detection, attribute allowlisting, prohibited-content exclusion, and confidential cloud blocking as non-disableable literal-true contract fields.
 
-**Reason:** The MVP remains local, lightweight, source-runnable, and accessible read-only to MCP without a JVM or separate database daemon.
+**Reason:** Users need control over useful metadata without a switch that turns Continuum into a content or credential collector.
 
-**Tradeoff:** Graph traversal and vector capabilities are intentionally narrower than a dedicated graph/vector platform.
+**Tradeoff:** “Privacy filters are toggleable” does not mean every exclusion is optional.
 
-### Explicit degraded retrieval
+### Global UUID plus local alias and repository fingerprint
 
-**Decision:** Continue with FTS5, graph, importance, and recency when local embeddings or sqlite-vec are unavailable; expose the degradation in state and Context Pack provenance.
+**Decision:** Replace path-derived project IDs with global UUIDs. Use a device-local path hash and normalized-name/root-commit fingerprint to match clones. Require confirmation on ambiguity.
 
-**Reason:** A judge machine may be offline or lack native vector support. Silent quality loss would make the demo misleading.
+**Reason:** Paths are device-specific and sensitive; remotes may include credentials. A root fingerprint supports clone matching without either.
 
-**Tradeoff:** Query relevance may be lower until the embedding model and sqlite-vec are available.
+**Tradeoff:** Repositories without commits cannot fingerprint, and deliberately duplicated histories/names can require user intervention.
+
+### Expiring active-project lease
+
+**Decision:** Use an authority-ranked lease. VS Code focus/terminal are strongest; Git/folder are lower confidence; Chrome reads but never renews.
+
+**Reason:** Chrome cannot safely inspect the filesystem and should not ask users to paste project IDs. A lease makes attribution automatic while preventing the browser from declaring its own project indefinitely.
+
+**Tradeoff:** Chrome correctly skips activity if the user has not recently established a project elsewhere.
+
+### SQLite locally, PostgreSQL for sync, Neo4j as projection
+
+**Decision:** Keep SQLite as the local source of truth; use PostgreSQL for synchronized account/oplog state; rebuild Neo4j from a PostgreSQL outbox.
+
+**Reason:** The Mac remains lightweight/offline-capable, synchronization has an auditable ordered log, and a graph outage cannot block device convergence.
+
+**Tradeoff:** There are two graph representations and explicit projection lag/recovery semantics.
+
+Neo4j was chosen over Kùzu because the Kùzu repository is archived. This does not make Neo4j a local runtime dependency.
+
+### Ordered migrations and bounded backups
+
+**Decision:** Run ordered SQLite/PostgreSQL migrations transactionally. Before a local schema upgrade, purge already-expired raw events and create a versioned backup whose removal is scheduled at 24 hours and retried by startup cleanup.
+
+**Reason:** Live data should survive upgrades without extending raw-event privacy retention through backups.
+
+**Tradeoff:** Migration code must understand old provenance well enough to remove demo-only rows without damaging live history.
 
 ### Evidence-backed checkpoints
 
-**Decision:** Reject a provider output if any factual item cites an event ID outside its supplied window.
+**Decision:** Reject a checkpoint if any factual item cites an event outside the supplied window.
 
-**Reason:** Fluent but ungrounded “memory” is worse than no checkpoint. Explicit blocker/hypothesis status also prevents an agent from treating a theory as fact.
+**Reason:** Fluent but unsupported memory is actively harmful. Explicit blocker/hypothesis lifecycle makes uncertainty machine-readable.
 
-**Tradeoff:** A schema/evidence failure leaves the window pending and requires retry.
+**Tradeoff:** Invalid model output leaves the window pending and requires a retry rather than producing a partial checkpoint.
+
+### Explicit degraded retrieval
+
+**Decision:** Use vectors when local MiniLM/sqlite-vec are ready; otherwise continue with FTS5 plus graph, importance, and recency while visibly reporting degradation.
+
+**Reason:** Capture and local memory must work offline or on a machine where a native vector extension/model is unavailable.
+
+**Tradeoff:** Retrieval quality/mode differs and performance evidence must identify the active mode.
 
 ### User-controlled Context Diff baseline
 
-**Decision:** “Since I last cared” means the last checkpoint the user explicitly acknowledged, or a baseline explicitly passed to `diff`.
+**Decision:** “Since I last cared” means the last checkpoint the user explicitly acknowledged or a baseline explicitly supplied to `diff`.
 
-**Reason:** Reading context should not mutate it. A hidden moving baseline would make diffs non-repeatable and erase unseen changes.
+**Reason:** Reading context must not mutate it or erase unseen change.
 
-**Tradeoff:** The user must press **Mark Caught Up** to advance the default baseline.
+**Tradeoff:** The user has to mark caught up intentionally.
 
-### Deterministic fixture before live providers
+### Capability-based providers with no fallback
 
-**Decision:** Implement a rules-based fixture provider and label every fixture surface **Synthetic deterministic replay**.
+**Decision:** Apple Foundation Models, Ollama, and OpenAI each expose health, structured checkpoint generation, and chat capability. On a fresh store Apple is selected only if an initial health check reports it available; otherwise Ollama remains selected. Later failures never switch providers.
 
-**Reason:** The critical MCP/diff/privacy path remains demonstrable and testable without Ollama model weights, an API key, or network access.
+**Reason:** Provider choice affects privacy, cost, availability, and model behavior. Cloud use cannot be a hidden recovery path.
 
-**Tradeoff:** Fixture output cannot be represented as captured activity or a live Gemma/OpenAI result. A genuine trace uses the guarded `export-recording` command and requires all four collectors.
+**Tradeoff:** Generation pauses until the configured provider recovers or the user explicitly changes it.
 
-### No silent local-to-cloud fallback
+### Swift helper for Apple Foundation Models
 
-**Decision:** A failed local model does not trigger OpenAI.
+**Decision:** Isolate Foundation Models behind a persistent JSONL Swift helper compiled conditionally and guarded with macOS 26 availability checks.
 
-**Reason:** Provider choice is a privacy decision. Sending eligible metadata to the cloud must remain visible and intentional.
+**Reason:** The newest on-device framework can be used without raising the app’s macOS 14 deployment target or coupling the Node daemon directly to a Swift-only API.
 
-**Tradeoff:** Checkpointing can pause until the local provider recovers or the user explicitly changes providers.
+**Tradeoff:** The helper protocol needs its own lifecycle, serialization, error mapping, and evidence validation.
 
-### `store:false` wording
+### OpenAI `store:false` wording
 
-**Decision:** Use `store:false` for OpenAI Responses requests and never call it Zero Data Retention.
+**Decision:** Use `store:false` for eligible Responses API requests and never describe it as Zero Data Retention.
 
-**Reason:** Request storage configuration and contractual data-retention terms are not interchangeable.
+**Reason:** A request storage option and contractual retention terms are not interchangeable.
 
-### Source-run native app
+### Five safe chat actions
 
-**Decision:** Ship a SwiftPM macOS 14+ menu-bar app staged locally as `dist/Continuum.app`, without signing/notarization/DMG work during Build Week.
+**Decision:** Chat can only search context, get a diff, select a project, create a checkpoint, or acknowledge a baseline. Read actions execute immediately; mutations require an explicit confirmation UI.
 
-**Reason:** The native experience and reliable judge path matter more for the MVP than distribution packaging.
+**Reason:** The agent can help manage Continuum context without becoming a shell, filesystem reader, browser automator, or general tool runner.
 
-**Tradeoff:** Gatekeeper/distribution readiness is deferred.
+**Tradeoff:** Chat cannot directly edit code or execute a recommended next action.
 
-## Codex-generated implementation areas
+### Read-only MCP on both transports
 
-- npm workspace and shared Zod contracts
-- Fastify daemon, bearer authentication, routes, SSE endpoint
-- SQLite schema, FTS5, graph persistence, optional sqlite-vec integration
-- privacy gate, event deduplication, windowing, provider orchestration
-- deterministic, Ollama, and OpenAI providers plus evidence validation
-- Context Pack ranking and Context Diff
-- read-only stdio MCP tools
-- VS Code, zsh, Git, and Chrome collectors
-- SwiftPM menu-bar app and inspector
-- fixture and deterministic tests
-- build/bootstrap and submission documentation
+**Decision:** Extract `current`, `timeline`, `search`, `resume`, `diff`, and `graph` into read-only bounded semantics for local stdio and remote Streamable HTTP.
 
-All generated work remains subject to human review, local verification, provider terms, and the MIT license in this repository.
+**Reason:** Codex receives useful context without gaining a covert mutation channel. A common contract keeps local and synchronized handoffs comparable.
 
-## Review corrections made during collaboration
+**Tradeoff:** Checkpoint creation and baseline acknowledgement stay in the native/PWA confirmed-action path, not MCP.
 
-The final documentation records the completed architecture changes rather than leaving them as plan-only claims:
+### Auth0 plus device-bound API keys
 
-- The native client consumes authenticated SSE, reconnects after interruption, and retains a 15-second polling fallback.
-- The daemon purges processed and pending normalized events 24 hours after their trusted daemon receipt time at pipeline startup and hourly thereafter.
-- Ollama checkpoint generation is globally serialized at concurrency one.
-- Project switching flushes the prior project immediately.
-- Context Pack and MCP diff character bounds are enforced even for oversized single results.
-- Read-only MCP initializes sqlite-vec extension access when the vector table exists and otherwise reports embedding/vector degradation explicitly.
-- Timeline labels fixture checkpoints **Synthetic deterministic replay**, bootstrap loads only Friday, and Context Diff exposes **Load Synthetic Catch-Up** for Monday after the user marks Friday caught up.
-- Confidential evidence cannot cross via prior checkpoint text, a local-only Context Diff briefing, or the deliberately cloud-safe MCP view.
-- Collector aggregate-drop events are audit-only and cannot become activity, checkpoint, graph, embedding, or provider input.
-- Checkpoint entities carry valid event evidence; provider failures persist stable error codes without raw model-output snippets.
-- `CONTINUUM_HOST` and `OLLAMA_URL` are constrained to loopback, and all collectors can share the canonical `npm run --silent project-id -- /path/to/repository` identity.
-- Every bootstrap creates a fresh project-local demo database; the project MCP wrapper follows its active-database pointer without hard-coding a transient path.
-- OpenAI health currently confirms key configuration, not a live model request.
-- Vector retrieval is optional and can require a first-run local model download.
-- Automated verification passed 32 engine, 29 collector, and 6 Swift tests plus build/type checks and MCP smoke; the full clean bootstrap and staged app/daemon verification also passed.
-- A real `gemma3n:e2b` structured-output smoke test passed, and `npm audit` reported zero known vulnerabilities.
-- The 10,000-checkpoint FTS5-plus-graph benchmark passed at 9.4 ms on the development machine.
-- An ephemeral `codex exec -m gpt-5.6-sol` run called Continuum `resume` then `diff` and produced the grounded file/commit/blocker/next-action handoff.
-- These results do not prove live OpenAI, a vector-mode/cross-machine benchmark, or the final recorded submission session.
+**Decision:** Use Auth0 Authorization Code with PKCE for people and compatible clients, with native refresh credentials in Keychain. Add copy-once, pepper-digested API keys that bind to their first physical sync device.
 
-Live status at this refresh is intentionally explicit: the local Gemma and ephemeral Codex resumption tests passed; `npm run smoke:openai` has not run because no key is configured; and the primary `/feedback` session ID, screenshots, public video, and public repository submission do not exist yet.
+**Reason:** OAuth supports browser/native sign-in and MCP discovery; scoped API keys support automation. Binding prevents a revoked device from returning under an unbound key.
 
-These are tracked as MVP limitations rather than hidden behind the intended architecture.
+**Tradeoff:** Auth0 is a managed identity dependency, and operators must configure issuer, audience, clients, scopes, rotation, and HTTPS correctly.
 
-## Final `/feedback` procedure
+### Server-queryable sync, not zero knowledge
 
-Before submission:
+**Decision:** Encrypt transport with TLS but allow the self-hosted service to process policy-eligible plaintext context for search, projection, chat, and MCP.
 
-1. Run the final demo flow in Codex on the final commit.
-2. Prompt only “Continue where I left off.”
-3. Confirm Codex invokes Continuum MCP and cites the correct checkpoint, file, and commit.
-4. Use Codex `/feedback` for that session.
-5. Paste the returned session ID into this file and `docs/DEVPOST.md`.
-6. Record the exact commit and test evidence in `docs/JUDGE_TESTING.md`.
+**Reason:** The requested remote graph and agent interface need server-side queries in this release.
 
-Do not invent or reuse an unrelated session ID.
+**Tradeoff:** This is not end-to-end encrypted or zero knowledge; deployment operators are inside the trust boundary.
+
+### Dock app plus persistent menu bar
+
+**Decision:** Run as a regular application with a primary window while retaining `MenuBarExtra` quick controls and a real Settings scene.
+
+**Reason:** Chat, graph, privacy, and devices require a discoverable full product surface; capture status still benefits from persistent lightweight access.
+
+**Tradeoff:** Continuum is visible in the Dock rather than behaving as a hidden accessory process.
+
+## Review corrections during implementation
+
+The working design was tightened when repository evidence exposed gaps:
+
+- Chrome’s manual project-ID and bearer-token UX was replaced with a five-minute pairing challenge and read-only active lease.
+- All collectors were moved to V2 global project/device identity instead of retaining path-derived IDs.
+- Ambiguous clone matches gained a persisted confirmation workflow rather than returning a transient warning.
+- Privacy audit rows stopped retaining event IDs; one-way hashes live in a separate dedupe table.
+- HLC/device sequence allocation became transactional and monotonic, with materialized per-entity clocks for deterministic LWW.
+- Pending sync operations are revalidated against current policy; expired event payloads are scrubbed.
+- Explicit graph node/edge operations synchronize instead of relying only on checkpoint reconstruction.
+- Chat user text and provider output both pass the secret boundary before durable completion.
+- Chrome collector credentials were narrowed to Chrome-source ingestion and limited policy/lease reads.
+- API keys gained transactional physical-device binding, and device revocation gained bound-key revocation.
+- One generic degraded banner was split into independent engine, collector, provider, vector, sync, and projection health.
+- Settings uses a real `openSettings()` action with activation/frontmost recovery and Command-comma.
+- macOS OAuth moved to `ASWebAuthenticationSession` with PKCE and Keychain-only refresh credential storage.
+
+These bullets describe architectural changes in the source, not proof that every environment-dependent acceptance scenario has been run.
+
+## Areas requiring human/external verification
+
+The following cannot be inferred from source inspection or unit tests alone:
+
+- Apple Foundation Models output on eligible macOS 26 hardware and every unavailable system state;
+- live Ollama and OpenAI output with the submission models/accounts;
+- Auth0 issuer/audience/client/scopes and refresh-token rotation in the real deployment;
+- public HTTPS/Caddy behavior, tenant isolation, and remote MCP interoperability;
+- offline multi-device conflict/revocation and Neo4j outage/rebuild against real services;
+- seven-source live capture and privacy-canary absence on the recording machine;
+- accessibility, performance, native/PWA rendering, and clean-machine bootstrap;
+- public repository, screenshots, video, Devpost entry, and the primary Codex `/feedback` session ID.
+
+Record these only after running [JUDGE_TESTING.md](JUDGE_TESTING.md).
+
+## Final Codex `/feedback` procedure
+
+1. Check out the final submission commit and run the full verification/live acceptance path.
+2. Capture real activity and checkpoints; do not load test data.
+3. Start a fresh Codex task with the final Continuum MCP configuration.
+4. Prompt only **Continue where I left off.**
+5. Confirm Codex calls Continuum and cites the correct checkpoint, file, commit, blocker/hypothesis state, and next action.
+6. Use Codex `/feedback` for that exact task.
+7. Record the returned session ID, commit, provider, and MCP transport here and in `DEVPOST.md`.
+
+```text
+Primary /feedback session ID: TBD
+Commit: TBD
+Provider/model: TBD
+MCP transport: TBD
+```
+
+Do not invent, reuse, or prefill an unrelated session ID.

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   isCommitId,
@@ -7,9 +11,9 @@ import {
   sanitizeSubject,
 } from "../privacy.mjs";
 import {
-  canonicalProjectId,
   normalizeProjectId,
-  resolveProjectId,
+  normalizeProjectName,
+  resolveProjectIdentity,
 } from "../project-identity.mjs";
 
 test("keeps safe repository-relative paths and drops secret paths", () => {
@@ -40,16 +44,43 @@ test("accepts SHA-1 and SHA-256 object ids only", () => {
   assert.equal(isCommitId("../HEAD"), false);
 });
 
-test("project identity has a canonical fallback and ordered explicit overrides", () => {
-  assert.match(canonicalProjectId("/tmp/continuum-repo"), /^[0-9a-f]{24}$/);
-  assert.equal(resolveProjectId("/tmp/continuum-repo"), canonicalProjectId("/tmp/continuum-repo"));
-  assert.equal(normalizeProjectId("  Build Week / Demo  "), "Build-Week-Demo");
+test("project identity uses a local alias and accepts ordered UUID overrides", () => {
+  assert.equal(normalizeProjectId("  Build Week / Demo  "), undefined);
+  const environmentId = "48120b21-97f6-4d7b-9034-a29c96d570c1";
+  const repositoryId = "6d61eefc-c194-4998-bb2e-98c979ed8821";
   assert.equal(
-    resolveProjectId("/tmp/continuum-repo", "", "repo config / demo"),
-    "repo-config-demo",
+    resolveProjectIdentity("/tmp/continuum-repo", "", repositoryId).projectId,
+    repositoryId,
   );
   assert.equal(
-    resolveProjectId("/tmp/continuum-repo", "environment / demo", "repo config / demo"),
-    "environment-demo",
+    resolveProjectIdentity("/tmp/continuum-repo", environmentId, repositoryId).projectId,
+    environmentId,
   );
+  assert.match(resolveProjectIdentity("/tmp/continuum-repo").localAlias, /^[0-9a-f]{64}$/);
+  assert.equal(resolveProjectIdentity("/tmp/continuum-repo").projectId, undefined);
+  assert.equal(normalizeProjectName(".env.production"), "private-project");
+});
+
+test("repository fingerprint is stable across clone paths", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "continuum-git-clones-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const seed = path.join(directory, "seed", "context-engine");
+  const cloneA = path.join(directory, "a", "context-engine");
+  const cloneB = path.join(directory, "b", "context-engine");
+  await mkdir(seed, { recursive: true });
+  execFileSync("git", ["init", "-q", seed]);
+  execFileSync("git", ["-C", seed, "config", "user.email", "continuum@example.invalid"]);
+  execFileSync("git", ["-C", seed, "config", "user.name", "Continuum Test"]);
+  await writeFile(path.join(seed, "README.md"), "identity\n");
+  execFileSync("git", ["-C", seed, "add", "README.md"]);
+  execFileSync("git", ["-C", seed, "commit", "-q", "-m", "Initial"]);
+  await mkdir(path.dirname(cloneA), { recursive: true });
+  await mkdir(path.dirname(cloneB), { recursive: true });
+  execFileSync("git", ["clone", "-q", seed, cloneA]);
+  execFileSync("git", ["clone", "-q", seed, cloneB]);
+  const left = resolveProjectIdentity(cloneA);
+  const right = resolveProjectIdentity(cloneB);
+  assert.equal(left.repositoryFingerprint, right.repositoryFingerprint);
+  assert.notEqual(left.localAlias, right.localAlias);
+  assert.equal(left.normalizedName, "context-engine");
 });

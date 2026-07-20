@@ -1,0 +1,40 @@
+{
+  "name": "@continuum/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "typecheck": "tsc -b",
+    "build": "npm run typecheck && vite build",
+    "icons": "mkdir -p /tmp/continuum-web-swift-cache && SWIFT_MODULECACHE_PATH=/tmp/continuum-web-swift-cache CLANG_MODULE_CACHE_PATH=/tmp/continuum-web-swift-cache swift scripts/generate-icons.swift",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pretest:e2e": "npm run build",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@auth0/auth0-react": "^2.4.0",
+    "@tanstack/react-query": "^5.90.0",
+    "graphology": "^0.26.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.0",
+    "sigma": "^3.0.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "^6.9.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "jsdom": "^27.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.0.18"
+  }
+}

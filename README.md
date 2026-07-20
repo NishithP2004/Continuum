@@ -1,79 +1,66 @@
 # Continuum
 
-**An event-driven context operating system for AI agents.**
+**A live, privacy-first context operating system for AI agents.**
 
-Continuum turns privacy-filtered developer activity into evidence-backed semantic checkpoints, then exposes those checkpoints to Codex through a read-only local MCP server. It captures useful state—not screens—so Codex can answer “Continue where I left off” with the relevant goal, blocker, files, commits, decisions, and cited checkpoint IDs without pasted chat history.
-
-Continuum is a **Developer Tools** entry for [OpenAI Build Week](https://openai.devpost.com). The [official rules](https://openai.devpost.com/rules) set the submission deadline at July 21, 2026 at 5:00 PM PDT (July 22 at 5:30 AM IST).
+Continuum observes allowlisted developer-tool and macOS metadata, turns related events into evidence-backed checkpoints, and makes that context available in a native app, a synchronized PWA, agent chat, and Model Context Protocol (MCP). It captures semantic state—not screens or content—so an agent can answer “Continue where I left off” with cited checkpoints, files, commits, blockers, and decisions.
 
 > Codex doesn’t need more memory. It needs better context.
 
-## What the MVP includes
+Continuum is a Developer Tools submission for [OpenAI Build Week](https://openai.devpost.com). The submission deadline is July 21, 2026 at 5:00 PM PDT. See the [official rules](https://openai.devpost.com/rules).
 
-- A Node 24/TypeScript engine on `127.0.0.1:43117`, protected by a generated bearer token.
-- Shared Zod contracts for normalized events, checkpoints, context packs, and context diffs.
-- Local SQLite storage with FTS5, graph nodes and edges, and optional 384-dimensional sqlite-vec embeddings.
-- Hybrid retrieval with hard-bounded Context Packs/MCP diffs and an explicit FTS5-plus-graph degraded path.
-- Ollama checkpointing with `gemma3n:e2b` and OpenAI Responses API checkpointing with structured output and `store:false`.
-- A read-only stdio MCP server with `current`, `timeline`, `search`, `resume`, and `diff` tools.
-- Privacy-first collectors for VS Code, zsh, Git, and foreground allowlisted Chrome tabs.
-- A macOS 14+ menu-bar app with authenticated SSE updates, a 15-second polling fallback, fetched privacy audit, GPT briefing action, and Now, Activity, Timeline, Context Diff, Privacy, and Provider Health views.
-- A Friday-to-Monday **Synthetic deterministic replay**, visibly labeled by the CLI, API, and native Timeline, for repeatable judging without a model dependency.
+## What is implemented
 
-## Supported environment
+- A macOS 14+ Dock app with a primary inspector window and persistent menu-bar controls.
+- Seven live metadata sources: VS Code, zsh terminals, Git, Chrome, macOS application lifecycle, optional focused-window titles, and explicitly approved folders.
+- A loopback-only Fastify daemon on `127.0.0.1:43117`, authenticated with a generated bearer token and backed by SQLite.
+- Global project UUIDs with device-local hashed path aliases. Git clones can match through their root commit fingerprint and normalized name; ambiguous matches wait for explicit confirmation.
+- Evidence-backed checkpoints, deterministic Context Diff, FTS5/graph retrieval, and optional local MiniLM/sqlite-vec retrieval.
+- Native cited chat with Apple Foundation Models, Ollama, or explicitly selected OpenAI. Mutating context actions always require confirmation.
+- A native interactive SwiftUI Canvas graph and a responsive Sigma.js PWA graph using the same bounded graph contract.
+- Policy-controlled collection, metadata fields, retention, domain/path rules, cloud eligibility, and aggregate-only privacy audit.
+- Optional multi-device synchronization through a self-hosted Fastify/PostgreSQL/Neo4j service with Auth0, device-bound API keys, tombstones, projection recovery, and a PWA.
+- Read-only local stdio MCP and tenant-scoped remote Streamable HTTP MCP. Both expose `current`, `timeline`, `search`, `resume`, `diff`, and `graph`.
 
-- macOS 14 or later on Apple Silicon
+Continuum is live-only. Every ordinary launch starts from existing live state or an empty store and never loads fixture activity. Synthetic data remains only inside automated tests.
+
+## Requirements
+
+- Apple Silicon Mac running macOS 14 or later
 - Node.js 24 and npm
 - Xcode Command Line Tools / Swift 5.10 or later
-- Optional: Ollama with `gemma3n:e2b`
-- Optional: `OPENAI_API_KEY` for OpenAI checkpointing and GPT briefing generation
-- VS Code 1.95+, Chrome 114+, Git, and zsh for the live collectors
+- VS Code 1.95+, Chrome 114+, Git, and zsh for their respective collectors
+- Optional: Ollama and a compatible installed model such as `gemma3n:e2b`
+- Optional on macOS 26+: Apple Intelligence and the Foundation Models system model
+- Optional: `OPENAI_API_KEY` for explicit OpenAI use
+- Optional remote companion: Docker Compose, Auth0, and a public HTTPS hostname
 
-This is a reproducible source-run build. The MVP is not signed, notarized, or distributed as a DMG.
+This repository produces a source-run app in `dist/Continuum.app`. Signing, notarization, a DMG, and App Store distribution are outside this release.
 
-## Judge quick start
+## Start the live app
 
 From the repository root:
 
 ```sh
-./script/bootstrap.sh --demo
+./script/bootstrap.sh
 ```
 
-The bootstrap path installs dependencies, runs verification, creates a fresh project-local demo database, stages `dist/Continuum.app`, launches the menu-bar app, and loads only the synthetic Friday phase. Confirm the Friday state in Timeline, press the Inspector toolbar’s **Mark Caught Up**, then open Context Diff and press **Load Synthetic Catch-Up** to load Monday. Every fixture surface is labeled **Synthetic deterministic replay**.
+Bootstrap installs dependencies, runs the repository verification suite, builds the TypeScript services and Swift helpers, stages `dist/Continuum.app`, starts the local daemon, and opens Continuum. It creates an empty live system; it does not load activity or checkpoints.
 
-Synthetic replay is never presented as captured activity. A genuine sanitized four-source trace can be created only from a non-demo project with:
+For a quicker development restart after dependencies are already installed:
 
 ```sh
-npm run cli -- export-recording <output.jsonl> [projectId]
+./script/bootstrap.sh --skip-verify
 ```
 
-The exporter refuses demo-contaminated projects, requires VS Code, terminal, Git, and Chrome events, and creates rather than overwrites its output file.
-
-Run the repository verification path separately:
+Or rebuild and relaunch directly:
 
 ```sh
-npm run verify
+./script/build_and_run.sh
 ```
 
-For a component-by-component protocol, expected evidence, and known unverified checks, see [Judge Testing](docs/JUDGE_TESTING.md).
+Continuum appears both in the Dock and in the menu bar. The menu provides capture pause/resume, Checkpoint Now, Catch Up, Inspector, Settings, and Quit. Settings also opens with Command-comma.
 
-### Recorded verification status
-
-On the development Apple Silicon Mac, the current implementation has passed:
-
-- `npm run verify`: 32 engine tests, 29 collector tests, 6 Swift tests, all builds/type checks, and the read-only MCP subprocess smoke test;
-- `./script/build_and_run.sh --verify`: staged app bundle, property list, executable, and daemon health;
-- `./script/bootstrap.sh --demo`: the full clean bootstrap path, including a fresh demo database and Friday-phase load;
-- `npm run smoke:ollama`: a real schema-valid `gemma3n:e2b` checkpoint;
-- `npm audit`: zero known vulnerabilities;
-- `npm run benchmark:retrieval`: the correct checkpoint retrieved from 10,000 synthetic checkpoints in **9.4 ms** using explicit FTS5-plus-graph degraded mode;
-- an ephemeral `codex exec -m gpt-5.6-sol` handoff: Codex called Continuum `resume` and `diff`, then cited the correct checkpoint, file, commit, resolved blocker, disproven hypothesis, and next action.
-
-These results were measured on the development Apple Silicon Mac. The OpenAI provider smoke test remains unrun because `OPENAI_API_KEY` is not configured. The primary recorded Codex `/feedback` session, screenshots, public video, and public repository submission are still pending.
-
-## Local data and authentication
-
-By default Continuum writes to:
+The local data directory is:
 
 ```text
 ~/Library/Application Support/Continuum/
@@ -81,60 +68,94 @@ By default Continuum writes to:
 └── continuum.sqlite
 ```
 
-The daemon generates a 32-byte random bearer token, attempts mode `0600` for the token and `0700` for the data directory, and requires that token for every data route. `/health` is the only unauthenticated endpoint. The default host is loopback-only.
+The physical device ID shared by the daemon and collectors is stored at `~/.continuum/device-id`. A migration of an existing database creates a pre-migration SQLite backup after purging expired raw events; Continuum schedules that backup for removal after 24 hours and also purges overdue backups on the next launch.
 
-Useful environment variables:
+### Launch troubleshooting
 
-| Variable | Purpose |
-| --- | --- |
-| `CONTINUUM_DATA_DIR` | Override the data directory. |
-| `CONTINUUM_DB` | Override the SQLite path, including for MCP. |
-| `CONTINUUM_TOKEN` | Supply a bearer token instead of generating one. |
-| `CONTINUUM_TOKEN_FILE` | Tell collectors or the app where to read the token. |
-| `CONTINUUM_HOST` | Override the daemon host; only `127.0.0.1`, `localhost`, or `::1` is accepted. |
-| `CONTINUUM_PORT` | Override port `43117`. |
-| `OLLAMA_URL` | Override `http://127.0.0.1:11434`; it must remain loopback HTTP with no credentials, query, or fragment. |
-| `OPENAI_API_KEY` | Enable the OpenAI provider; never persisted by Continuum. |
-| `CONTINUUM_DISABLE_EMBEDDINGS=1` | Force explicit FTS5-plus-graph degraded retrieval. |
-
-## Codex MCP setup
-
-The repository includes `.codex/config.toml` for this workspace and `.codex/environments/environment.toml`, whose Codex Run action launches `./script/build_and_run.sh`. The MCP configuration calls `script/run_mcp.sh`: it honors an explicit `CONTINUUM_DB`, otherwise follows `.continuum-runtime/active-demo-db` created by the latest bootstrap, and finally falls back to the default database. Build first, then print/regenerate the project-scoped MCP configuration when the clone path changes:
+If the inspector says disconnected, verify the daemon and inspect its project-local log:
 
 ```sh
-npm run build
-npm run cli -- mcp-config
+curl --fail http://127.0.0.1:43117/health
+tail -n 80 .continuum-runtime/daemon.log
 ```
 
-Copy the emitted block into `.codex/config.toml`. It resolves to the built stdio entry point and enables all five Continuum tools. If the database is not at the default path, launch Codex with `CONTINUUM_DB` pointing at it.
+Relaunch through `./script/build_and_run.sh` so the daemon, staged app, data directory, and generated token agree. Do not paste the daemon’s general bearer token into Chrome; Chrome uses its pairing challenge. A visible **FTS + graph** retrieval warning does not disable capture—it means embeddings/sqlite-vec are unavailable. If `CONTINUUM_DISABLE_EMBEDDINGS=1` was set earlier, unset it before relaunching to allow vector initialization.
 
-Equivalent configuration:
+If the app is connected but Activity stays empty, check the source-specific prerequisite: VS Code SecretStorage connection, sourced zsh hook, installed Git hooks, approved native source/folder, or Chrome pairing plus domain allowlist plus active-project lease.
 
-```toml
-[mcp_servers.continuum]
-command = "/absolute/path/to/Continuum/script/run_mcp.sh"
-args = []
-cwd = "/absolute/path/to/Continuum"
-enabled_tools = ["current", "timeline", "search", "resume", "diff"]
-startup_timeout_sec = 10
-tool_timeout_sec = 30
+## First live capture
+
+1. Open **Continuum → Settings** and choose a checkpoint and chat provider.
+2. Open **Settings → Privacy**. Enable only the sources and metadata fields you want, add approved folders, and add any Chrome domains you want to allow.
+3. Install one or more developer collectors below.
+4. Focus a trusted VS Code workspace or run a command from a Continuum-enabled zsh inside a repository. Either source establishes the strongest active-project lease.
+5. Use the app normally. Windows flush after 30 seconds, 15 relevant events, a project switch, or **Checkpoint Now**.
+6. Open **Timeline**, **Graph**, **Context Diff**, or **Chat** to inspect the resulting live context.
+
+Git and approved-folder activity can establish lower-confidence leases. Chrome only reads a still-valid lease and can never renew one. If no lease exists, the extension skips capture and explains how to establish it.
+
+### VS Code
+
+Build the extension, then open `collectors/vscode` in VS Code and launch its Extension Development Host:
+
+```sh
+npm run build -w @continuum/vscode-collector
 ```
 
-Restart Codex, then ask only:
+In a trusted, single-root workspace, run **Continuum: Connect to Local Engine** and paste the contents of `~/Library/Application Support/Continuum/auth.token`. VS Code stores it in SecretStorage. The extension records workspace focus plus active/saved workspace-relative file metadata; it never reads document text.
 
-```text
-Continue where I left off.
+### zsh terminals
+
+Add this opt-in integration to `.zshrc`:
+
+```zsh
+source '/absolute/path/to/Continuum/integrations/zsh/continuum.plugin.zsh'
 ```
 
-Continuum’s MCP process opens SQLite read-only with `PRAGMA query_only`, loads sqlite-vec when the initialized vector table is available, reserves stdout for JSON-RPC, and sends diagnostics to stderr. All five tools intentionally omit local-only checkpoints whose source windows contained confidential metadata, because MCP output may be consumed by a cloud agent. MCP reads never acknowledge a checkpoint or move the Context Diff baseline.
+It works in Terminal.app, iTerm2, and VS Code terminals. Raw command input reaches the sanitizer over stdin and is immediately reduced to a safe command shape, working directory alias, duration, and exit code. Terminal output is never collected. Leading-space private commands, environment assignments, heredocs, multiline input, and secret-shaped commands become aggregate rule counters only.
 
-The implementation follows the documented local stdio/project-scoped [Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+### Git
 
-## Checkpoint providers
+Run the installer from each repository you approve:
 
-### Local Ollama
+```sh
+/absolute/path/to/Continuum/integrations/git/install.sh
+```
 
-The default provider is Ollama and the default model is `gemma3n:e2b`:
+It installs repository-local `post-commit`, `post-checkout`, `post-merge`, and `post-rewrite` hooks. It refuses the complete installation if a target hook already exists. Events contain only commit SHA, branch, sanitized subject, operation, and bounded repository-relative changed paths—never patches, blobs, remotes, or credentials.
+
+### Chrome
+
+Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `collectors/chrome`.
+
+1. Open the Continuum extension and choose **Pair with Continuum**.
+2. Approve the five-minute challenge under **Settings → Privacy → Chrome pairing**.
+3. Add allowed domains in Continuum’s Privacy settings.
+4. Focus a VS Code workspace or use a Continuum-enabled terminal so an active-project lease exists.
+
+There is no project-ID or bearer-token field in Chrome. The paired credential is scoped to Chrome event ingestion, and the project is displayed read-only. The extension observes only the foreground tab in the focused, non-incognito window. It stores an allowlisted host and, when enabled, a sanitized path. Userinfo, query, fragment, page title, DOM, cookies, and history are excluded.
+
+### macOS sources
+
+The app collects application launch, activation, and termination metadata through `NSWorkspace` when that source is enabled. Approved folders use FSEvents and emit coalesced relative-path/change-kind metadata only.
+
+Focused-window titles are off by default, require Accessibility permission, pass through the secret/sensitive-metadata filter, and are always local-only. Continuum does not use Accessibility for keystrokes or screen content.
+
+All adapters keep bounded, already-sanitized retry queues for daemon outages. Queued records are re-evaluated against the current policy before persistence, and daemon deduplication makes retries effectively once-only.
+
+## Providers and chat
+
+Checkpoint and chat providers are selected independently in Settings. A selected provider failure is surfaced; Continuum never silently switches providers.
+
+### Apple Foundation Models
+
+The staged app includes a Swift JSONL helper that is compiled conditionally and guarded at runtime. On macOS 26+ it reports the system model’s real availability, including device-ineligible, Apple-Intelligence-disabled, model-not-ready, and unsupported-locale states. It verifies `supportsLocale()` before selection and labels unsupported prompt-language failures explicitly. If Apple’s system model is available on first launch, Continuum selects it automatically; otherwise the initial selection remains Ollama. There is no later automatic fallback.
+
+The helper serializes generation at concurrency one, bounds input for the system model, supports checkpoint and streaming-chat operations, and returns evidence that is revalidated by the TypeScript engine. See Apple’s [Foundation Models documentation](https://developer.apple.com/documentation/FoundationModels).
+
+### Ollama
+
+The default Ollama model is `gemma3n:e2b`:
 
 ```sh
 npm run setup:models
@@ -142,157 +163,158 @@ npm run doctor
 npm run smoke:ollama
 ```
 
-The provider sends at most 15 already-sanitized events, requests JSON matching the checkpoint schema, makes one repair attempt after invalid JSON or invalid evidence, and serializes all Ollama checkpoint generation at global concurrency one. It does not silently fall back to OpenAI. Other installed Ollama model IDs may be selected manually in Settings.
-
-The real `gemma3n:e2b` smoke test passed on the development machine with a schema-valid checkpoint. This remains a machine-local result; judge hardware and local Ollama configuration can differ.
+Ollama must remain on loopback. Checkpoint generation uses a bounded event window and JSON-schema output, with one repair attempt after invalid output. Other installed models can be selected manually.
 
 ### OpenAI
 
-Export the API key before launching Continuum:
+Export the key before launching Continuum:
 
 ```sh
-export OPENAI_API_KEY="your-key"
+export OPENAI_API_KEY='your-key'
 ./script/build_and_run.sh
-npm run smoke:openai
 ```
 
-The Settings UI offers `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`, with Terra as the default cloud model. The API key remains in the environment. Cloud selection is visible consent for eligible sanitized events; secret and confidential events are never eligible. OpenAI checkpoint generation does not receive a prior local-only checkpoint, and GPT briefing generation refuses a Context Diff containing any local-only checkpoint. Requests use structured output and `store:false`. **`store:false` is not the same as Zero Data Retention.**
+The key is never persisted by Continuum. Settings offers `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and an advanced custom model ID. OpenAI is explicit cloud consent for policy-eligible sanitized context. Requests use structured outputs where applicable and `store:false`; **this is not the same as Zero Data Retention**. Secret, confidential, and local-only evidence cannot enter an OpenAI request.
 
-Model IDs follow the official [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
+Model IDs follow the official [GPT-5.6 guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
 
-Live Ollama and OpenAI calls depend on the judge’s local model/API configuration and are not part of the synthetic replay guarantee. Ollama passed locally; OpenAI live testing remains unrun because no API key is configured.
+### Grounded agent chat
 
-## Install the live collectors
+Native and PWA chat cite checkpoints and related files, commits, blockers, decisions, and entities. Active hypotheses are labeled unverified. Messages and provider responses are secret-scanned before persistence.
 
-All collectors send only to loopback HTTP, queue already-sanitized events when the daemon is unavailable, and rely on daemon deduplication for retry safety. Use the canonical repository identity everywhere:
+The agent has only five context actions:
+
+- `search_context` and `get_diff` execute immediately because they are read-only.
+- `select_project`, `create_checkpoint`, and `ack_baseline` create a proposal that the user must explicitly confirm or reject.
+
+There is no shell, file-content, arbitrary HTTP, or code-execution tool in chat.
+
+On the remote companion, confirmed `ack_baseline` can update the synchronized baseline. `create_checkpoint` and `select_project` require a connected Mac; the remote service returns `paired_mac_required` and does not queue or execute a command. Cancelling a run discards its proposals and does not persist a completed assistant response.
+
+## Codex MCP
+
+Build, then print the project-scoped local configuration:
 
 ```sh
-npm run --silent project-id -- /path/to/repository
+npm run build
+npm run cli -- mcp-config
 ```
 
-VS Code, zsh, and Git derive this same 24-character ID when they observe the canonical repository root; Chrome requires the printed value because it cannot inspect the filesystem.
+The equivalent `.codex/config.toml` entry is:
 
-### VS Code
-
-```sh
-npm run build -w @continuum/vscode-collector
+```toml
+[mcp_servers.continuum]
+command = "/absolute/path/to/Continuum/script/run_mcp.sh"
+args = []
+cwd = "/absolute/path/to/Continuum"
+enabled_tools = ["current", "timeline", "search", "resume", "diff", "graph"]
+startup_timeout_sec = 10
+tool_timeout_sec = 30
+env = { CONTINUUM_DB = "/absolute/path/to/Continuum data/continuum.sqlite" }
 ```
 
-For the source-run MVP, open `collectors/vscode` in VS Code and launch its Extension Development Host. In the target trusted, single-root workspace, run **Continuum: Connect to Local Engine** and paste the contents of `auth.token`. The token is stored in VS Code SecretStorage. Use **Continuum: Retry Pending Events** after an outage.
-
-The extension observes workspace focus, active-file, and save metadata. Paths are workspace-relative; document text is never read. Its durable queue keeps the newest 1,000 sanitized events for at most 24 hours.
-
-### zsh
-
-Source the integration explicitly from `.zshrc`:
-
-```zsh
-source '/absolute/path/to/Continuum/integrations/zsh/continuum.plugin.zsh'
-```
-
-It uses `preexec`/`precmd` in Terminal.app, iTerm2, and VS Code terminals. Raw command text is passed over stdin to the local sanitizer and immediately reduced to a safe command shape. Leading-space private commands, multiline commands, heredocs, environment assignments, and secret-shaped commands become aggregate counters. Terminal output is never captured. The durable queue keeps the newest 1,000 sanitized events for at most 24 hours.
-
-### Git
-
-From each repository you explicitly want to observe:
-
-```sh
-/absolute/path/to/Continuum/integrations/git/install.sh
-```
-
-The installer adds repository-local `post-commit`, `post-checkout`, `post-merge`, and `post-rewrite` hooks. It refuses the entire installation if any target hook already exists; it never changes global Git configuration. Events contain SHA, branch, sanitized subject, operation, and up to 50 repository-relative changed paths—never patches, blobs, remotes, or credentials. The repository-local queue keeps the newest 1,000 sanitized events for at most 24 hours.
-
-### Chrome
-
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `collectors/chrome`. In the popup:
-
-1. Paste the output of `npm run --silent project-id -- /path/to/repository`.
-2. Add exact allowed domains or explicit `*.example.com` patterns.
-3. Paste the local bearer token.
-4. Enable capture and approve the optional `tabs` plus localhost permissions.
-
-The extension watches only the active tab in the focused, non-incognito window. It stores the allowlisted host and a sanitized path. Userinfo, query, fragment, email-like segments, high-entropy path segments, page titles, DOM, cookies, and history are not collected. Its durable queue keeps the newest 500 sanitized events for at most 24 hours.
-
-## Data flow
-
-```mermaid
-flowchart LR
-    A["VS Code / zsh / Git / Chrome"] --> B["Adapter privacy gate"]
-    B --> C["Sanitized local retry queue"]
-    C --> D["Bearer-authenticated Fastify daemon"]
-    D --> E["Daemon allowlist + secret scan"]
-    E --> F["SQLite events and 30s / 15-event windows"]
-    F --> G["Ollama or OpenAI checkpoint provider"]
-    G --> H["Evidence validation"]
-    H --> I["Checkpoints + FTS5 + graph + optional vectors"]
-    I --> J["Context Pack / Context Diff"]
-    J --> K["SwiftUI inspector"]
-    J --> L["Read-only Codex MCP"]
-```
-
-See [Architecture](docs/ARCHITECTURE.md) and [Privacy](docs/PRIVACY.md) for contracts, route details, retention, and trust boundaries.
-
-## Engine API
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/v1/events/batch` | Validate, filter, deduplicate, and enqueue up to 100 normalized events. |
-| `POST` | `/v1/windows/flush` | Checkpoint pending events now. |
-| `GET/PATCH` | `/v1/state` | Read health/counters or pause/resume capture. |
-| `GET` | `/v1/checkpoints` | List semantic checkpoints. |
-| `POST` | `/v1/search` | Build a query-ranked Context Pack. |
-| `GET` | `/v1/resume` | Build a bounded resume Context Pack. |
-| `GET` | `/v1/diff` | Compute changes from an explicit or acknowledged baseline. |
-| `POST` | `/v1/diff/briefing` | Generate an optional OpenAI briefing from a cloud-eligible deterministic diff. |
-| `POST` | `/v1/projects/:id/ack` | Set the user-controlled “last cared” checkpoint. |
-| `GET/PATCH` | `/v1/settings/models` | Read or change checkpoint provider/model. |
-| `GET` | `/v1/privacy` | Read aggregate privacy-rule counters. |
-| `GET` | `/v1/stream` | Stream revision notifications over SSE. |
-| `POST` | `/v1/demo/replay` | Load `friday`, `monday`, or `all` from the labeled synthetic deterministic replay. |
-
-## Privacy guarantee
-
-Continuum does not capture screenshots, screen video, file or document bodies, terminal output, keystrokes, browser DOM or history, cookies, clipboard contents, Git patches or blobs, remotes, or credentials. A collector can briefly receive a raw command or URL in memory solely to reduce it to an allowlisted shape; raw values are not placed in its retry queue or sent to the daemon.
-
-Secret-classified or secret-shaped events are rejected before event persistence. Collector-generated aggregate drop events are audit-only too: only source, aggregate rule name, action, count, and time enter the privacy audit; they never become activity events, checkpoints, graph entities, or provider input. The daemon repeats schema validation, attribute allowlisting, URL stripping, home-path reduction, and secret detection even when a collector has already sanitized an event.
-
-All normalized event rows, including pending rows, are purged at pipeline startup and by an hourly lifecycle timer 24 hours after daemon receipt. Retention uses trusted `received_at`, not the collector-supplied event timestamp. Checkpoints retain only concise evidence summaries and IDs; evidence-bearing entities also cite valid input event IDs.
-
-Read the precise guarantees and limitations in [Privacy](docs/PRIVACY.md).
-
-## Current MVP limitations
-
-- Vector retrieval is optional. sqlite-vec/table load failure, missing or not-yet-initialized local embedding weights, offline first-run model download, or `CONTINUUM_DISABLE_EMBEDDINGS=1` produces an explicit `fts_graph`/degraded state; search still uses FTS5, graph expansion, importance, and recency.
-- Checkpoints have no automatic retention UI in this MVP; they retain concise evidence summaries and event IDs.
-- Signing/notarization, remote MCP, cross-device sync, checkpoint deletion controls, and full graph visualization are deferred.
-- VS Code and Chrome are source-run/unpacked integrations; no Marketplace or Chrome Web Store package is included.
-- The 10,000-checkpoint FTS5-plus-graph benchmark passed at 9.4 ms on the development machine, but it is not a cross-machine or vector-mode performance guarantee.
-- Verification includes stable provider error codes without raw model-output snippets, but it does not prove every possible model failure mode.
-- OpenAI live generation, the primary recorded Codex `/feedback` session, screenshots/video/publication, and one genuine exported four-collector session remain unproven. The ephemeral Codex MCP resumption test passed locally.
-
-## Repository map
+Restart Codex, then ask:
 
 ```text
-.codex/                 Project MCP config and Codex Run action
-collectors/              VS Code and Chrome adapters
-integrations/            zsh and repository-local Git adapters
-fixtures/                Synthetic deterministic Friday-to-Monday JSONL
-native/ContinuumApp/     SwiftPM menu-bar app and tests
-packages/contracts/      Shared Zod contracts
-packages/continuum/      Engine, providers, retrieval, REST, CLI, and MCP
-script/                  Bootstrap and build/run scripts
-docs/                    Architecture, privacy, testing, pitch, and demo assets
+Continue where I left off.
 ```
 
-## Submission assets
+The generated configuration pins the resolved database path. Without `--db`, the stdio process resolves `CONTINUUM_DB`, then `CONTINUUM_DATA_DIR/continuum.sqlite`, then the standard Application Support location. It opens SQLite read-only with `PRAGMA query_only`, reserves stdout for JSON-RPC, and writes diagnostics to stderr. Its output is bounded and restricted to cloud-eligible context because it may be consumed by a cloud agent. MCP reads never move the acknowledged Context Diff baseline.
 
-- [Demo script](docs/DEMO_SCRIPT.md)
+If a checkpoint depends on personal metadata such as workspace-relative paths, enable **Privacy → Allow eligible sanitized metadata for cloud providers and sync** before using Codex MCP. Otherwise Continuum intentionally keeps that checkpoint out of MCP results; public-only checkpoints remain eligible without this switch.
+
+The self-hosted service exposes the same six read-only tools at `https://your-host/mcp` over Streamable HTTP. It publishes OAuth protected-resource metadata and accepts Auth0 access tokens or scoped `ctm_<id>_<secret>` API keys. Configure remote MCP against the public HTTPS resource with `context:read`; see the [MCP authorization specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) and [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+## Self-hosted synchronization and PWA
+
+Copy the environment template, configure Auth0 and DNS, then start the stack:
+
+```sh
+cp infra/.env.example infra/.env
+docker compose --env-file infra/.env -f infra/docker-compose.yml up --build
+```
+
+The stack contains:
+
+- Fastify cloud API and remote MCP
+- PostgreSQL account, operation-log, outbox, policy, chat, device, and API-key state
+- Neo4j as a rebuildable graph projection
+- an idempotent projection worker
+- the React/TypeScript/Vite installable PWA
+- Caddy HTTPS termination
+
+PostgreSQL remains authoritative if Neo4j is unavailable. Sync continues, projection lag is reported, and the worker can replay the outbox after recovery. The PWA provides Now, Chat, Graph, Timeline, Privacy, Devices, and Settings routes; it is a synchronized companion and never performs collection on the viewing device.
+
+The macOS Auth0 flow uses Authorization Code with PKCE in `ASWebAuthenticationSession`. Configure the native Auth0 callback as `dev.continuum.app://auth/callback`. Refresh credentials are stored only in Keychain; transient access tokens are handed to the local sync client. API keys are shown once, stored server-side only as an HMAC-SHA-256 digest using the configured pepper, and bound to the first physical sync device that uses them. Revoking that device revokes its bound keys.
+
+See [infra/README.md](infra/README.md), [packages/cloud/README.md](packages/cloud/README.md), and [apps/web/README.md](apps/web/README.md).
+
+## Privacy boundary
+
+These controls are configurable: source enablement, optional window titles, relative paths, URL hosts/paths, safe command names/flag names, retention from 1–24 hours, allow/ignore rules, confidential local collection, and personal cloud eligibility.
+
+These protections cannot be disabled:
+
+- credential and secret detection/rejection;
+- strict contract and source-specific attribute allowlists;
+- exclusion of screenshots, screen video, document/file bodies, terminal output, environment values, keystrokes, clipboard, browser DOM/history/cookies, URL userinfo/query/fragment, and Git patches/blobs/remotes;
+- confidential metadata never entering a cloud provider, sync, local MCP, remote MCP, or cloud storage. It may be used by the explicitly selected on-device Apple/Ollama provider when confidential local collection is enabled.
+
+Privacy audit rows contain only a fixed rule name, decision, count, source, and time. Rejected payloads and event IDs are not stored in the audit. Sanitized raw events expire from the primary device/server stores after the configured interval and never beyond 24 hours. A pre-migration SQLite backup is a separate bounded recovery artifact with the cleanup behavior described above. Checkpoints retain concise evidence summaries and IDs.
+
+See [Privacy](docs/PRIVACY.md) for the complete trust-boundary description.
+
+## Runtime configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `CONTINUUM_DATA_DIR` | Override the local data directory. |
+| `CONTINUUM_DB` | Override the SQLite path, including for MCP. |
+| `CONTINUUM_TOKEN` / `CONTINUUM_AUTH_TOKEN` | Supply the shared local daemon/app token instead of generating one; explicit tokens must contain at least 32 non-whitespace characters. |
+| `CONTINUUM_TOKEN_FILE` | Tell the daemon, collectors, and native app where to read the same token. Existing token files are permission-hardened to `0600`; empty/weak files are regenerated. |
+| `CONTINUUM_DEVICE_ID` | Explicit physical-device UUID override; non-UUID values are rejected. |
+| `CONTINUUM_DEVICE_ID_FILE` | Override the shared device-ID file. |
+| `CONTINUUM_HOST` | Local daemon host; only `127.0.0.1`, `localhost`, or `::1` is accepted. |
+| `CONTINUUM_PORT` | Compatibility check only; if set, it must be `43117`, the fixed native/Chrome origin. |
+| `OLLAMA_URL` | Override the loopback Ollama URL. |
+| `CONTINUUM_APPLE_BRIDGE` | Override the Foundation Models helper path. |
+| `OPENAI_API_KEY` | Enable explicit OpenAI use; never persisted. |
+| `CONTINUUM_SYNC_URL` | Remote HTTPS service origin; loopback HTTP is allowed for development. |
+| `CONTINUUM_SYNC_TOKEN` | Remote OAuth access token or scoped API key; never stored in SQLite. |
+| `CONTINUUM_AUTH0_ISSUER` | Auth0 HTTPS issuer used by the native PKCE flow. |
+| `CONTINUUM_AUTH0_CLIENT_ID` | Auth0 Native Application client ID. |
+| `CONTINUUM_AUTH0_AUDIENCE` | Continuum Auth0 API audience. |
+| `CONTINUUM_AUTH0_SCOPES` | Space-delimited native scopes; must include `openid offline_access`. |
+| `CONTINUUM_DISABLE_EMBEDDINGS=1` | Force the explicit FTS5-plus-graph retrieval mode. |
+
+## Verification
+
+Run the repository suite:
+
+```sh
+npm run verify
+```
+
+Additional opt-in checks:
+
+```sh
+npm run test:web:e2e
+npm run smoke:apple
+npm run smoke:ollama
+npm run smoke:openai
+npm run benchmark:retrieval
+./script/build_and_run.sh --verify
+```
+
+Provider smoke tests require their corresponding system model, local model, or API configuration. Remote acceptance requires Auth0, PostgreSQL, Neo4j, Caddy, and an HTTPS host. The repository does not claim those environment-dependent checks have passed merely because their test paths exist. Use [Judge Testing](docs/JUDGE_TESTING.md) to record evidence from the exact submission commit.
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Privacy model](docs/PRIVACY.md)
+- [Live judge testing](docs/JUDGE_TESTING.md)
+- [Live demo script](docs/DEMO_SCRIPT.md)
 - [Devpost draft](docs/DEVPOST.md)
-- [Judge testing](docs/JUDGE_TESTING.md)
 - [Codex collaboration and decision log](docs/CODEX_COLLABORATION.md)
 
-Screenshots, video, public repository/Devpost publication, and the primary Codex `/feedback` link remain explicit placeholders until those artifacts exist; the repository does not fabricate them.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+Licensed under the [MIT License](LICENSE).

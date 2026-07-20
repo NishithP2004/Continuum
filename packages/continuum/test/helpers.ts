@@ -1,6 +1,6 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { NormalizedEventV1 } from "@continuum/contracts";
 import type { RuntimeConfig } from "../src/runtime.js";
 
@@ -13,8 +13,8 @@ export async function testConfig(): Promise<RuntimeConfig> {
     databasePath: join(dataDir, "continuum.sqlite"),
     tokenPath: join(dataDir, "auth.token"),
     token: "test-token",
-    ollamaUrl: "http://127.0.0.1:9",
-    fixturePath: resolve(import.meta.dirname, "../../../fixtures/jwt-friday-monday.jsonl")
+    deviceIdentityPath: join(dataDir, "device-id"),
+    ollamaUrl: "http://127.0.0.1:9"
   };
 }
 
@@ -23,8 +23,8 @@ export function event(overrides: Partial<NormalizedEventV1> = {}): NormalizedEve
     version: "1",
     id: crypto.randomUUID(),
     occurredAt: new Date().toISOString(),
-    source: "demo",
-    eventType: "demo.progress",
+    source: "vscode",
+    eventType: "vscode.progress",
     projectId: "test-project",
     title: "Made meaningful progress",
     attributes: { windowId: "test" },

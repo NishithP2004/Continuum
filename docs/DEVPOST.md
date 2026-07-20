@@ -1,127 +1,183 @@
-# Devpost Submission Draft
+# Devpost submission draft
 
-Replace every `[PLACEHOLDER]` only after the artifact exists. Do not submit bracketed placeholders.
+Do not publish placeholder links or unverified test claims. Replace every `TBD` only after the artifact exists on the final submission commit.
 
-## Submission metadata
+## Project name
 
-- **Project:** Continuum
-- **Category:** Developer Tools
-- **Tagline:** An event-driven context operating system for AI agents.
-- **Deadline:** [July 21, 2026 at 5:00 PM PDT](https://openai.devpost.com/rules) / July 22 at 5:30 AM IST
-- **Repository:** `[PUBLIC_GITHUB_URL]`
-- **Video:** `[PUBLIC_YOUTUBE_URL]`
-- **Primary Codex /feedback session ID:** `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]`
-- **Devpost URL after publication:** `[DEVPOST_PROJECT_URL]`
-- **Supported platform:** macOS 14+ on Apple Silicon; source-run build
-- **License:** MIT
+**Continuum**
 
-## Elevator pitch
+## Tagline
 
-Current AI memory products often brute-force context by capturing screens or storing raw histories. Continuum captures less and understands more. It collects small, source-specific developer events, removes sensitive data twice on-device, turns the remaining metadata into evidence-backed semantic checkpoints, and exposes bounded Context Packs and Context Diffs to Codex over a read-only local MCP server.
+**Live, privacy-first context infrastructure that lets Codex continue your work without screenshots or pasted history.**
 
-The result is a simple moment: ask Codex only “Continue where I left off.” Codex retrieves the current goal, blockers, hypotheses, decisions, files, and commits—with checkpoint provenance—and recommends the next action without pasted history.
+## Short description
 
-That handoff has passed in an ephemeral local `codex exec -m gpt-5.6-sol` test using Continuum `resume` and `diff`. The primary recorded `/feedback` session for submission is still pending.
+Continuum turns live, allowlisted developer and macOS metadata into evidence-backed checkpoints, a semantic graph, and deterministic Context Diff. A native Mac app, grounded agent chat, synchronized PWA, and read-only local/remote MCP give Codex the exact files, commits, blockers, decisions, and next action it needs—without capturing screens or content.
 
 ## Inspiration
 
-AI agents are good at reasoning over context but developers still spend time reconstructing that context: which branch mattered, what failed, what changed while they were away, and which hypothesis was disproven. Existing “memory” approaches tend to maximize observation. That creates privacy risk, noisy retrieval, and unnecessary tokens.
+The failure mode in today’s “AI memory” is not a lack of storage. It is the choice to treat people’s screens and histories as an undifferentiated stream.
 
-Continuum starts with a different abstraction: context is infrastructure. The operating layer should emit semantic state changes, keep the observer local, and let the cloud act only as an explicitly selected consultant.
+Screenshots are privacy-invasive, expensive to process, difficult to search, and surprisingly weak evidence of intent. A developer’s tools already know when a workspace was focused, a safe command finished, a file was saved, a commit landed, or a documentation tab was opened. Those semantic events are smaller, clearer, and can be filtered before they cross a process boundary.
+
+Continuum treats context as operating-system infrastructure rather than another chat transcript. The local device remains the observer. A model becomes a bounded consultant.
 
 ## What it does
 
-Continuum is a macOS menu-bar app backed by a local TypeScript daemon. Four opt-in adapters collect allowlisted metadata:
+Continuum is a live-only, local-first context platform for developer work.
 
-- VS Code: trusted workspace focus and workspace-relative active/save paths;
-- zsh: safe command shape, repository-relative cwd, duration, and exit code;
-- Git: SHA, branch, sanitized subject, operation, and changed paths;
-- Chrome: the foreground allowlisted host and a URL path with sensitive components removed.
+On macOS it collects allowlisted metadata from seven sources:
 
-Every adapter filters before transport. The daemon validates and filters again, stores sanitized events in SQLite, and groups them into project windows. Ollama Gemma 3n or an explicitly selected OpenAI model produces a structured checkpoint. Every factual item must cite a supplied event ID; an invented ID rejects the checkpoint.
+- trusted single-root VS Code workspace focus and active/save events;
+- opt-in zsh command shape, cwd, duration, and exit code;
+- repository-local Git commit/checkout/merge/rewrite metadata;
+- a paired Chrome extension’s foreground allowlisted host and sanitized path;
+- macOS application lifecycle metadata;
+- optional, Accessibility-gated focused-window titles that stay local-only;
+- coalesced relative-path/change-kind metadata from explicitly approved folders.
 
-Retrieval combines local vectors, FTS5, graph expansion, importance, and recency. `continuum.resume` returns a maximum of 12 checkpoints and 12,000 serialized characters. `continuum.diff` compares the current state with the checkpoint the user explicitly marked as “last cared.” MCP reads never move that baseline.
+It never captures screenshots, file or page bodies, terminal output, keystrokes, clipboard, browser DOM/history/cookies, URL query data, Git patches/blobs/remotes, or credentials.
+
+Events are grouped per global project and summarized into checkpoints. Every factual checkpoint item must cite one of the exact input event IDs. Those checkpoints feed:
+
+- **Now and Timeline** for current focus and history;
+- **Context Diff** for cited changes since the last checkpoint the user explicitly acknowledged;
+- **Graph** for bounded project/task/file/commit/blocker/decision/concept relationships;
+- **Chat** for cited answers and narrowly scoped context actions;
+- **Codex MCP** for `current`, `timeline`, `search`, `resume`, `diff`, and `graph`.
+
+The native app lives in both the Dock and menu bar. An optional self-hosted service synchronizes eligible context to PostgreSQL, projects it into Neo4j, exposes authenticated Streamable HTTP MCP, and powers an installable responsive PWA. The PWA is a companion; it never collects device activity.
+
+There is no runtime seed or replay mode. The submission demo uses activity captured live during the recording.
 
 ## The “aha” moment
 
-In the demo, bootstrap creates a fresh database and loads a clearly labeled **Synthetic deterministic replay** of Friday, ending with an unresolved dashboard 401 and a clock-skew hypothesis. The user presses **Mark Caught Up**, then **Load Synthetic Catch-Up** to load Monday. Context Diff identifies commit `a0ada710a0ada710a0ada710a0ada710a0ada710` and changed files, resolves the 401, marks clock skew disproven, and records the dataset-UUID/RLS decision. Codex receives only Continuum’s bounded, cloud-safe MCP output and can recommend the correct next action with cited provenance.
+After a real work interruption, the user asks Codex only:
+
+> Continue where I left off.
+
+Codex calls Continuum, receives a bounded Context Pack and Context Diff, cites the relevant checkpoint, file, and commit, distinguishes an open blocker from a disproven hypothesis, and recommends the correct next action. No history is pasted into the prompt.
 
 ## How we built it
 
-- Node 24, TypeScript, Fastify, Zod, and Node’s SQLite API
-- SQLite FTS5, graph node/edge tables, optional sqlite-vec
-- Local 384-dimensional MiniLM embeddings through Transformers
-- Ollama structured JSON checkpointing with `gemma3n:e2b`
-- OpenAI Responses API structured output with `store:false`
-- MCP TypeScript SDK over local stdio
-- SwiftPM and SwiftUI `MenuBarExtra` for the native macOS shell
-- VS Code extension API, zsh hooks, repository-local Git hooks, and Chrome Manifest V3
+### Local engine
 
-The default cloud checkpoint model is `gpt-5.6-terra`; the recorded demo target uses `gpt-5.6-sol`. `gpt-5.6-luna` and an advanced custom model ID are also selectable. The OpenAI API key is accepted only through `OPENAI_API_KEY` and is never persisted by Continuum.
+The Node 24/TypeScript daemon runs only on loopback, uses a generated bearer token, and stores local state in SQLite. FTS5, graph tables, and optional 384-dimensional MiniLM/sqlite-vec retrieval combine lexical score, vectors, one-hop graph expansion, importance, and recency. When vector support is unavailable, Continuum explicitly reports FTS-plus-graph mode.
+
+Strict shared Zod contracts define live events, active project leases, privacy policy, checkpoints, context packs/diffs, graph snapshots, chat sessions/messages/actions, and HLC sync operations.
+
+Projects use global UUIDs rather than path-derived IDs. Device-local paths become hashes; clones can match through normalized repository name and root commit fingerprint. Ambiguous matches create a provisional project and require the user to choose a candidate.
+
+### Native product
+
+The SwiftPM macOS 14+ app uses SwiftUI and narrow AppKit interop. It has a regular Dock window, persistent menu bar, separate Settings scene, authenticated SSE updates, polling recovery, live OS collectors, cited chat, and an interactive Canvas graph with deterministic off-main layout.
+
+The Apple Foundation Models helper is a separate JSONL process compiled conditionally and guarded at runtime for macOS 26+. It exposes actual availability, guided checkpoint generation, and chat streaming without dropping macOS 14–25 support.
+
+### Models
+
+Continuum has capability-based providers for:
+
+- Apple’s on-device system model when macOS 26+, hardware, and Apple Intelligence make it available;
+- local Ollama, with `gemma3n:e2b` as the initial configured model;
+- explicit OpenAI Responses API models, including GPT-5.6 Sol, Terra, and Luna plus an advanced custom ID.
+
+Provider selection is a privacy decision. Continuum never silently falls back from one provider to another. OpenAI keys remain environment-only, eligible requests use `store:false`, and the product does not describe that setting as Zero Data Retention.
+
+### Agent chat
+
+Native chat builds a bounded Context Pack before calling the selected Apple, Ollama, or OpenAI provider. The PWA’s remote chat composes a bounded cited answer from synchronized checkpoints. Both surfaces cite checkpoints and related entities, while active hypotheses are labeled unverified. A second secret scan runs on assistant output before persistence.
+
+The agent can only search context, get a diff, select a project, create a checkpoint, or acknowledge a baseline. Read actions run immediately. Every state-changing action requires an explicit confirmation button. There is no shell, file-content, arbitrary HTTP, or code-execution tool.
+
+The remote companion can complete a confirmed synchronized-baseline acknowledgement. Checkpoint creation and authoritative project selection require the Mac; remote confirmation returns a structured `paired_mac_required` result without queueing or executing a device command.
+
+### Synchronization, graph, and remote MCP
+
+The optional Docker Compose deployment includes Fastify, PostgreSQL, Neo4j, an idempotent projection worker, the React/Vite PWA, and Caddy HTTPS termination.
+
+PostgreSQL is the synchronized account/oplog source of truth. Neo4j is rebuildable. If projection is unavailable, sync continues, lag is shown, and bounded graph responses fall back to PostgreSQL until the projection recovers.
+
+Authentication uses Auth0. The PWA and native app use Authorization Code with PKCE; the Mac stores refresh credentials only in Keychain. Remote MCP publishes OAuth protected-resource metadata. Copy-once API keys have `ctm_<id>_<secret>` format and are stored only as a peppered HMAC-SHA-256 digest. A key binds to its first physical sync device, and device revocation revokes its bound keys.
+
+Local stdio and remote Streamable HTTP MCP share the same six read-only operations. Both are bounded, tenant/project scoped, and cite checkpoint provenance.
 
 ## How OpenAI is used
 
-Continuum uses the OpenAI Responses API in two explicit, user-selected paths:
+GPT-5.6 is an explicitly selected cloud provider for eligible checkpoint generation, grounded chat, and optional Context Diff briefing. Continuum sends only bounded, sanitized metadata and validates structured checkpoint evidence against the supplied event IDs.
 
-1. Generate a schema-valid, evidence-backed semantic checkpoint from sanitized `public`/`personal` events.
-2. Turn an already-computed deterministic Context Diff into a concise catch-up briefing and next actions.
+Codex is also the primary agent consumer. The local/remote MCP server supplies current state, history, semantic search, resume packs, change diffs, and graph snapshots so Codex can recover context without a hand-written prompt or pasted transcript.
 
-Both paths request structured output and set `store:false`. Secret events are rejected before persistence; confidential events are excluded from cloud input. OpenAI checkpointing receives no prior local-only checkpoint text, and briefing generation refuses any Context Diff containing a local-only checkpoint. Local-to-cloud fallback never happens silently. `store:false` is not presented as Zero Data Retention.
+The recorded submission should select GPT-5.6 Sol visibly, show the cloud-active indicator, generate a real cited response, and finish with a Codex MCP handoff from the exact final build.
 
-Codex is also the product surface: the project-scoped read-only MCP server lets Codex invoke `current`, `timeline`, `search`, `resume`, and `diff`. It omits any checkpoint whose source window included confidential metadata, while the native local inspector retains that view. The primary Codex collaboration session will be supplied as `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]`.
+## Privacy architecture
 
-## Privacy and security
+Privacy runs twice: once inside each adapter and again before daemon persistence. Collector queues hold sanitized events only and retry through daemon deduplication.
 
-Continuum never captures screenshots, file/document bodies, terminal output, keystrokes, browser DOM/history/titles/cookies, clipboard data, Git patches/blobs/remotes, or credentials.
+Users can toggle sources, optional window titles, relative paths, URL hosts/paths, safe command names/flags, retention, allow/ignore rules, confidential local collection, and personal cloud eligibility. Four protections are immutable: secret rejection, attribute allowlisting, prohibited-content exclusion, and the confidential cloud block.
 
-The first privacy engine runs inside each adapter, before its local retry queue. The daemon repeats schema validation, source-specific attribute allowlisting, URL/path reduction, and secret scanning before SQLite. Secret and collector aggregate-drop events produce audit counters only; they cannot become stored activity or model input. Event expiry uses trusted daemon receipt time. Cloud selection is visible consent for eligible sanitized metadata; confidential data remains local.
-
-The daemon binds to loopback only (`CONTINUUM_HOST` cannot select a LAN address), requires a generated bearer token for all data routes, and stores the token with restrictive file permissions. `OLLAMA_URL` is also restricted to credential-free loopback HTTP. MCP opens SQLite read-only.
+Rejected data never enters an audit row. The audit stores only fixed rule, decision, count, source, and time. Sanitized raw events expire after the configured period and never beyond 24 hours. Checkpoints retain minimal evidence summaries and IDs. Confidential context remains local and cannot enter providers, sync, MCP, or cloud storage.
 
 ## Challenges
 
-The hardest design constraint was not model prompting; it was proving that useful context survives aggressive data minimization. Each source required a different safe boundary. A terminal command can be reduced to executable/subcommand shape, while a browser URL must be reconstructed from an allowlisted host with userinfo, query, fragment, and sensitive path segments removed.
+### Identity without leaking paths
 
-The second challenge was evidence integrity. A fluent checkpoint is harmful if it invents progress. Continuum therefore validates every evidence ID against the exact input window, attaches evidence to entities as well as factual items, keeps hypotheses explicitly unverified, and stores stable provider failure codes rather than raw model-output snippets.
+Clones need a shared identity, but absolute paths and remotes are sensitive and device-specific. The solution combines a global UUID with a device-local hashed alias and a repository fingerprint based on normalized name/root commits. The hard case is ambiguity, so Continuum refuses to merge silently and persists a user-confirmable conflict.
 
-The third challenge was graceful degradation. Local vector dependencies and model weights are not guaranteed on a judge machine, so Continuum reports an explicit FTS5-plus-graph mode instead of hiding the loss or failing the product.
+### One privacy contract across seven collectors
 
-## Accomplishments
+Each source starts with a different raw shape. A terminal command, browser URL, FSEvent path, and Git hook cannot share a superficial sanitizer. We built source-specific first gates plus a strict shared daemon gate and made retry queues contain only already-reduced events.
 
-- One bounded, read-only MCP interface can resume work without pasted history.
-- Context Diff uses a user-controlled baseline and never mutates it during reads.
-- A visibly synthetic deterministic fixture exercises three checkpoints and meaningful Friday-to-Monday changes while including a secret canary that must not persist.
-- The four collectors share one event contract while enforcing source-specific privacy rules.
-- Local and cloud checkpoint providers share the same schema and evidence validation.
-- The native menu-bar inspector makes capture, cloud selection, privacy counters, provider health, and degraded retrieval visible.
-- Native updates use authenticated SSE with reconnect plus a 15-second polling fallback.
-- The current verification pass completed 32 engine tests, 29 collector tests, 6 Swift tests, builds/type checks, and the read-only MCP subprocess smoke test.
-- The full clean bootstrap and staged app/daemon verification passed; a real `gemma3n:e2b` smoke produced valid structured output; and `npm audit` reported zero known vulnerabilities.
-- FTS5-plus-graph retrieval found the seeded result among 10,000 checkpoints in 9.4 ms on the development machine.
+### Supporting Apple’s newest model without abandoning macOS 14
 
-OpenAI live testing has not run because no API key is configured. The ephemeral grounded Codex handoff passed, but the primary recorded `/feedback` session, screenshots, public video, and public repository submission remain pending and must not be claimed as complete.
+Foundation Models is compile-time and runtime conditional. A persistent Swift JSONL helper isolates availability checks and generation while the main product remains compatible with earlier macOS versions.
+
+### Offline sync with a rebuildable graph
+
+Device sequence, HLC, idempotency, immutable collision rules, tombstones, and privacy revalidation all need to agree. PostgreSQL therefore owns the operation log, while Neo4j is deliberately disposable and replayable.
+
+### Keeping agent actions safe
+
+A useful agent should help manage context, but this product should never become a remote shell. We constrained the action vocabulary to five context operations and separated immediate reads from confirmed mutations.
+
+## Accomplishments we are proud of
+
+- One architecture spans private local capture, native experience, synchronized companion, and two MCP transports without making the cloud the observer.
+- Checkpoint claims are structurally tied to real event evidence.
+- Context Diff has a user-controlled baseline; reading context never erases unseen changes.
+- Chrome is paired by a short-lived challenge and automatically uses an expiring active-project lease.
+- The graph has stable bounded contracts across SwiftUI, Sigma.js, local MCP, PostgreSQL fallback, and Neo4j.
+- Provider, collector, engine, vector, synchronization, and projection health are independent rather than collapsed into one misleading “degraded” state.
+- Privacy controls are flexible without making credential/content protections optional.
 
 ## What we learned
 
-The best context is not the largest context. A checkpoint needs provenance, status, and a retrieval contract more than it needs raw activity. Separating blockers from hypotheses also changes agent behavior: Codex can recommend validation instead of repeating an unverified theory as fact.
+Better agent memory is mostly a systems problem: identity, provenance, privacy, lifecycle, and retrieval matter before model cleverness does. Events are valuable only when attribution is reliable. Summaries are valuable only when claims are cited. Sync is safe only when eligibility is rechecked at transmission time. A graph service is operationally useful only when it can be rebuilt from an authoritative log.
 
-We also learned that privacy needs a product surface. The cloud-active indicator, aggregate drop counters, explicit baseline acknowledgement, and degraded retrieval state are as important as the filtering code because they let the user understand what the system is doing.
+The strongest product behavior also came from refusing hidden automation: no silent provider fallback, no Chrome project guessing without a lease, no automatic baseline movement, no ambiguous clone merge, and no mutating chat action without confirmation.
 
-## What’s next
+## What is next
 
-- Checkpoint deletion and retention controls
-- Signed/notarized packaging and first-class collector installers
-- Encrypted local storage and richer local permission boundaries
-- Remote/cross-device context with end-to-end encryption
-- Additional opt-in adapters for issue trackers, Slack, and Calendar
-- Interactive graph exploration and broader vector/cross-machine retrieval benchmarks
+- Signed/notarized distribution and a packaged collector installer.
+- Broader accessibility and performance validation on multiple Mac configurations.
+- More explicit project-conflict management and graph comparison tools.
+- Optional end-to-end encrypted synchronization for users who do not want a server-queryable companion.
+- Additional opt-in semantic adapters that preserve the same no-content boundary.
 
-## Setup and testing
+Screen capture, content collection, remote shell/file access, and silent cloud fallback are not roadmap goals.
 
-```sh
-./script/bootstrap.sh --demo
-npm run verify
-npm run benchmark:retrieval
+## Built with
+
+TypeScript, Node.js 24, Fastify, Zod, SQLite/FTS5/sqlite-vec, local MiniLM embeddings, Swift, SwiftUI, AppKit, Foundation Models, Ollama, OpenAI Responses API, MCP, PostgreSQL, Neo4j, Docker Compose, Caddy, Auth0, React, Vite, TanStack Query, Graphology, Sigma.js, Chrome Manifest V3, VS Code Extension API, zsh, and Git hooks.
+
+## Links and submission metadata
+
+```text
+Public repository: TBD
+Public YouTube video: TBD
+Primary Codex /feedback session ID: TBD
+Final commit: TBD
+Live service/PWA (if published): TBD
 ```
 
-Detailed judge instructions, component commands, expected evidence, and known non-claims are in `docs/JUDGE_TESTING.md`. Fixture state is always labeled **Synthetic deterministic replay**. A genuine trace is created only with `npm run cli -- export-recording <output.jsonl> [projectId]`, which refuses demo-contaminated projects and requires all four sources. Verification, the full clean bootstrap, staged app check, real Gemma smoke, zero-vulnerability npm audit, 9.4 ms development-machine FTS5-plus-graph benchmark, and an ephemeral grounded Codex handoff have passed. OpenAI live, the primary `/feedback` session, screenshots, public video, and public submission have not.
+Before submission, replace each `TBD`, run the full protocol in [JUDGE_TESTING.md](JUDGE_TESTING.md), and remove any line whose evidence is not available to judges.

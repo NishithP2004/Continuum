@@ -1,160 +1,195 @@
-# Continuum Privacy Model
+# Continuum privacy model
 
-Continuum is designed around data minimization: collect the smallest useful semantic event, reject secrets twice, keep raw observation local and transient, and expose agents only to bounded evidence-backed checkpoints.
+Continuum treats privacy as a data-shape constraint, not a prompt. Collection starts from a narrow metadata allowlist, applies source-side sanitization before a retry queue or transport, and repeats policy/secret enforcement before SQLite persistence, provider use, synchronization, REST/MCP output, and chat persistence.
 
-## Guarantees
+The system is live-only. There is no runtime fixture or replay route that can be mistaken for collected activity.
 
-Continuum does **not** capture or persist:
+## Permanent exclusions
 
-- screenshots, screen recordings, or accessibility-tree snapshots;
-- file contents, document bodies, editor selections, or unsaved text;
-- terminal output, shell history, or individual keystrokes;
-- browser DOM, page content, page titles, history, cookies, or form data;
+No policy switch, provider selection, sync setting, API client, or chat action can enable collection of:
+
+- screenshots, screen recordings, or screen pixels;
+- document, source-file, or web-page bodies;
+- terminal output or transcripts;
+- environment-variable values;
+- keystrokes or input event streams;
 - clipboard contents;
-- Git patches, diffs, blobs, remotes, or credentials;
-- environment-variable values or API keys.
+- browser DOM, page titles, full history, cookies, URL userinfo, query strings, or fragments;
+- Git patches, diffs, blobs, remotes, or credential-bearing configuration;
+- arbitrary filesystem reads, remote shell commands, or code execution.
 
-The zsh adapter briefly receives the submitted command string in its process memory so it can classify and reduce it to a safe shape. The Chrome adapter briefly receives the active tab URL so it can reconstruct an allowlisted origin/path. Those raw values are not written to retry queues or transported to the daemon.
+The four immutable `PrivacyPolicyV1` fields are literal `true` values:
 
-## Two privacy boundaries
+- credential/secret detection;
+- contract and attribute allowlisting;
+- prohibited-content exclusion;
+- confidential cloud-provider/sync block.
 
-```mermaid
-sequenceDiagram
-    participant Source as Developer app
-    participant Adapter as Source adapter
-    participant Queue as Sanitized queue
-    participant Daemon as Local daemon
-    participant Store as SQLite
-    participant Model as Selected provider
+A PATCH request cannot set these protections to false because the server reconstructs them as true before strict schema validation.
 
-    Source->>Adapter: Source-specific transient metadata
-    Adapter->>Adapter: Allowlist, secret rules, reduction
-    alt secret or disallowed
-        Adapter->>Queue: Aggregate rule counter only
-    else eligible
-        Adapter->>Queue: Sanitized NormalizedEventV1
-    end
-    Queue->>Daemon: Loopback + bearer token
-    Daemon->>Daemon: Strict schema, allowlist, secret scan again
-    alt rejected
-        Daemon->>Store: Rule/source/action/time audit only
-    else accepted
-        Daemon->>Store: Sanitized metadata
-        Daemon->>Model: Provider-eligible bounded events
-    end
-```
+## Two local privacy gates
 
-### Boundary 1: inside each adapter
+### 1. Adapter gate
 
-Each collector has a source-specific allowlist and creates a `NormalizedEventV1` only after sanitization. Failed delivery queues contain already-sanitized events.
+Each adapter receives only the minimum raw value needed to produce safe metadata and reduces it before writing a queue or crossing the loopback transport boundary.
 
-### Boundary 2: before daemon persistence
+- VS Code evaluates workspace membership and path sensitivity, then keeps a workspace-relative path and language ID.
+- zsh passes raw command input to the sanitizer over stdin, not process arguments or logs. It retains a safe command shape plus bounded completion metadata.
+- Git invokes local Git commands but retains only bounded metadata; it never reads a patch or blob.
+- Chrome parses the current foreground URL in memory, applies the app-managed domain policy, and discards prohibited URL components.
+- The native collector receives workspace notifications, Accessibility window-title values, or FSEvent paths and immediately reduces them to allowlisted attributes.
 
-The daemon re-parses the strict schema, rejects explicit `secret` classification and secret-shaped strings, strips every non-allowlisted attribute, sanitizes control characters and home-directory prefixes, removes URL userinfo/query/fragment, and checks the sanitized result again.
+Only already-sanitized events enter a collector retry queue. Queues are bounded, physically evict expired records, and are re-evaluated against the daemon’s current policy when delivery resumes.
 
-An accepted event is marked with `daemon_allowlist_v1` and `daemon_secret_scan_v2`. A rejected secret records only source, rule name, action, count, and audit time—not the secret event or value. Likewise, a collector’s `privacy.drop.aggregate` event is consumed directly into the audit counter: it is never stored as an activity event, checkpointed, embedded, graphed, or sent to a provider.
+### 2. Daemon gate
 
-## Source-specific collection
+The daemon treats every adapter as untrusted. Before an event can enter SQLite it applies:
 
-| Source | Retained | Dropped or never read |
+1. strict `NormalizedEventV2` parsing and size limits;
+2. live-source and source-switch validation;
+3. source-specific event-type and attribute allowlists;
+4. secret/credential scanning across title and permitted attributes;
+5. URL component stripping and path normalization;
+6. current metadata switches, allow/ignore rules, and classification policy;
+7. relevance and aggregate-audit handling;
+8. project resolution, sync-eligibility reduction, and deduplication.
+
+An adapter’s `cloud_eligible` bit is only a request. The daemon can reduce it to `local_only`; it cannot promote confidential or prohibited data.
+
+## Source inventory
+
+| Source | Possible retained metadata | Source-specific boundary |
 | --- | --- | --- |
-| VS Code | Trusted single-root workspace focus; workspace-relative active/saved file path; language ID; sanitized workspace label. | Document text, selections, outside-workspace paths, `.env`, key/credential paths, generated directories. |
-| zsh | Executable/safe subcommand shape, repository-relative cwd, project name, duration, exit code, terminal session identifier. | Output, full arbitrary arguments, leading-space private commands, multiline commands, heredocs, assignments, secret-shaped commands and paths. |
-| Git | Commit SHA, branch, operation, sanitized subject, at most 50 repository-relative changed paths. | Patch/diff content, blobs, remotes, credentials, secret paths/subjects. |
-| Chrome | User-allowlisted host and reconstructed HTTP(S) path for the foreground tab in the focused window. | Userinfo, query, fragment, email/high-entropy/secret path segments, titles, DOM, page content, cookies, history, background and incognito tabs. |
+| VS Code | trusted workspace focus; active/saved workspace-relative path; language ID; hashed local project alias; repository fingerprint | Trusted, single-root, local-file workspaces only. Document text is never read. Sensitive/generated paths are dropped. |
+| zsh terminal | safe command name/shape, optional flag names, repository-relative cwd metadata, duration, exit code, session/command ID | Leading-space private commands, multiline input, heredocs, assignments, secret-shaped input, and unsafe command forms become aggregate counters. No output. |
+| Git | SHA, branch, sanitized subject, hook operation, at most 50 relative changed paths | Repository-local refuse-overwrite hooks. No patches, blobs, remotes, or credentials. |
+| Chrome | allowlisted foreground host and optional sanitized path | Paired collector only; non-incognito focused window only. No project field, bearer-token field, title, DOM, history, cookie, query, or fragment. |
+| macOS apps | app name, sanitized bundle identifier, launch/activate/terminate action | `NSWorkspace` metadata only. Continuum ignores its own process. |
+| focused window | sanitized title, app name, bundle identifier | Off by default, Accessibility opt-in, deduplicated, confidential, and permanently local-only. |
+| approved folder | coalesced relative path or generic change label, change kind, approved project | FSEvents only for folders explicitly selected in the app. No implicit home-directory watch and no file read. |
 
-Chrome’s `tabs` and localhost host permissions are optional and requested only after the user presses **Connect and save**. The manifest declares incognito `not_allowed` and has no content script or history permission.
+## What the user can control
 
-## Classification and provider eligibility
+The native app and synchronized PWA expose the mutable parts of `PrivacyPolicyV1`:
 
-| Classification | Persist as an event | Eligible for local Ollama | Eligible for OpenAI |
-| --- | ---: | ---: | ---: |
-| `public` | Yes, after both gates | Yes | Yes, when OpenAI is selected |
-| `personal` | Yes, after both gates | Yes | Yes, when OpenAI is selected |
-| `confidential` | Yes, after both gates | Yes | No |
-| `secret` | No | No | No |
+- enable/disable VS Code, terminal, Git, Chrome, macOS applications, optional windows, and approved folders;
+- enable/disable workspace-relative file paths, URL hosts/paths, safe command names/flag names, and personal metadata;
+- allow or disallow confidential local collection;
+- allow or disallow personal metadata for cloud providers and synchronization;
+- set raw sanitized-event retention from 1 to 24 hours;
+- maintain Chrome domain allowlists and ignored domains;
+- maintain ignored relative-path globs;
+- add/remove approved folders locally.
 
-Selecting OpenAI is treated as visible consent for eligible sanitized events. There is no per-request confirmation in the MVP. Continuum never silently falls back from local to cloud. OpenAI checkpointing starts without prior local checkpoint text, and GPT briefing refuses any Context Diff whose checkpoint set contains local-only evidence. The read-only MCP view also omits every checkpoint whose source window was not entirely cloud-eligible, because its output may be consumed by a cloud model; those checkpoints remain visible in the native local inspector.
+Focused-window capture and personal cloud eligibility are off on a fresh store. Chrome also captures nothing until pairing is approved, at least one domain is allowed, and a valid active-project lease exists.
 
-OpenAI requests use the Responses API with structured output and `store:false`. `OPENAI_API_KEY` is read from the environment and never written by Continuum. `store:false` must not be represented as Zero Data Retention; any applicable OpenAI account, API, and legal terms remain controlling.
+Every persisted policy has a monotonically increasing revision and update time. Collector and local UI policy updates travel through the daemon revision stream; eligible policy records can synchronize by HLC last-write-wins. Regardless of a mutable-policy merge, the immutable exclusions above remain enforced. Pending records are rechecked against the currently materialized policy before a push.
 
-## Secret rules
+## Classification and eligibility
 
-The daemon rejects common forms including:
+| Classification | Local collection | Local model | OpenAI | Sync/cloud storage | Local/remote MCP |
+| --- | --- | --- | --- | --- | --- |
+| `public` | When source/metadata policy permits | Yes | Only when OpenAI is explicitly selected | Eligible | Eligible after other bounds |
+| `personal` | When personal metadata is enabled | Yes | Only when both cloud eligibility and OpenAI selection permit | Only when policy permits | Only cloud-eligible derived context |
+| `confidential` | Only when confidential local collection is enabled | Yes, for the selected on-device provider | Never | Never | Never |
+| `secret` or secret-shaped | Never persisted as an event/message | Never | Never | Never | Never |
 
-- OpenAI-style `sk-…` values;
-- API-key, access-token, password, and secret assignments;
-- private-key headers;
-- Authorization header values;
-- `.env` paths;
-- the deterministic fixture canary `CONTINUUM_DEMO_SECRET_SHOULD_NEVER_APPEAR`.
+Selecting a cloud model is explicit provider consent, not a privacy-policy bypass. `OPENAI_API_KEY` is read from the process environment and not persisted. OpenAI requests use `store:false`, which must not be described as Zero Data Retention.
 
-Collectors add stricter source-specific rules. Rule-based detection reduces risk but cannot prove detection of every possible secret format. Users should still avoid intentionally putting secrets into file names, branch names, or commit subjects.
+## Secret rejection
 
-## Data lifecycle
+Secret detection covers recognized API-key/token formats, private-key markers, authorization headers, credential-bearing URL patterns, generic credential assignments, and source-specific unsafe forms. A secret decision produces only a fixed aggregate rule counter. The raw rejected string, event title, event ID, command, URL, path, or model response is not stored in the privacy audit.
 
-### In-memory source payloads
+The same boundary applies to chat:
 
-Raw command strings and tab URLs exist only long enough for adapter sanitization. File contents, terminal output, and browser content are never requested.
+- a secret-shaped user message is rejected before chat persistence, context retrieval, or provider invocation;
+- a provider response is scanned before assistant-message persistence or SSE completion;
+- confidential/local-only sessions cannot use OpenAI or synchronize;
+- active hypotheses are stored and rendered as unverified, not factual memory.
 
-### Collector retry queues
+## Privacy audit
 
-- VS Code: sanitized JSON under extension global storage; token in SecretStorage; newest 1,000 events, maximum age 24 hours.
-- zsh: sanitized session/queue JSON under `~/.continuum/zsh`, created with restrictive modes; newest 1,000 queued events, maximum age 24 hours.
-- Git: sanitized per-event JSON under that repository’s `.git/continuum/queue`; newest 1,000 queued events, maximum age 24 hours.
-- Chrome: sanitized events in extension local storage; token in browser session storage; newest 500 events, maximum age 24 hours.
+Audit records intentionally contain only:
 
-Entries are removed after successful daemon delivery. All four collectors physically prune invalid/expired entries before queue persistence or a delivery attempt. Events at the exact 24-hour boundary remain eligible; older events are deleted.
+- a fixed rule identifier;
+- decision/action;
+- aggregate count;
+- source;
+- timestamp.
 
-### Daemon database
+They contain no rejected payload, title, event ID, local path, command, URL, token fragment, or provider output. Dedupe uses a separate one-way hash table, not a copy of the rejected identifier.
 
-The default SQLite database is `~/Library/Application Support/Continuum/continuum.sqlite`. All normalized event rows received by the daemon more than 24 hours earlier, including pending/uncheckpointed rows, are deleted when the event pipeline starts and by an hourly lifecycle timer. Expiry is based on trusted database `received_at`, not the collector-supplied `occurredAt`; far-future event times are also clamped at ingestion.
+## Chrome pairing and project attribution
 
-Checkpoints retain concise evidence text, event IDs, project/window IDs, evidence-bearing entities, provider/model, and timestamps. Every retained entity cites one or more valid input event IDs. They do not retain file bodies or raw provider prompts. Checkpoints, provider-run metadata, graph rows, and privacy audit rows have no automatic expiry or deletion UI in the MVP.
+Chrome requests a five-minute localhost challenge from its `chrome-extension://` origin. The user must approve that exact pending request in Continuum. The extension proves possession of its original challenge and receives a `ctc_...` credential; the database stores only its SHA-256 hash. Revocation invalidates it.
 
-### Embeddings
+That credential can read only the active lease/current privacy policy and submit only Chrome-source events. It cannot invoke general daemon routes or masquerade as VS Code, terminal, Git, or OS collection.
 
-Embeddings are computed locally from checkpoint goal, focus, summary, blockers, hypotheses, and decisions. No raw event body is embedded. If the local MiniLM runtime or sqlite-vec is unavailable, vector insertion/search is skipped and the explicit degraded mode is used.
+Chrome has no manually entered project ID. It reads an unexpired device lease created by VS Code/terminal, lower-confidence Git/folder activity, or explicit project selection. Chrome never renews the lease; without one, capture is skipped.
 
-## Authentication and transport
+## Global project identity
 
-- The daemon defaults to `127.0.0.1:43117`; `CONTINUUM_HOST` accepts only `127.0.0.1`, `localhost`, or `::1`.
-- `OLLAMA_URL` must be loopback HTTP and may not contain credentials, a query, or a fragment.
-- A generated random bearer token is required for all data routes; only `/health` is public.
-- The default data directory and token modes are tightened to `0700` and `0600` where the filesystem permits.
-- zsh and Git validate that their endpoint is loopback HTTP with no URL credentials.
-- VS Code transport rejects non-loopback endpoints.
-- Chrome requests only its two loopback host origins.
-- MCP is local stdio, opens SQLite read-only with `PRAGMA query_only`, can load the already-initialized sqlite-vec table without making database writes, and exposes only cloud-safe checkpoints.
+VS Code, zsh, and Git use a shared physical device ID and a SHA-256 device-local path alias. When available, a repository fingerprint is derived from normalized project name and root commit IDs. Absolute paths and remotes are excluded.
 
-The API currently returns `Access-Control-Allow-Origin: *`; bearer authentication is therefore the enforcement boundary for browser-origin requests. A malicious process running as the same macOS user and able to read the token or database is outside this MVP’s isolation boundary.
+One exact fingerprint/name match joins a clone to its global UUID. Multiple matches create a new provisional project and a persisted conflict. The user must select one of the candidate projects before the local alias is remapped; Continuum never silently merges an ambiguous clone.
 
-## Evidence integrity
+## Provider request boundary
 
-Checkpoint facts must cite event IDs supplied to the selected model. Unknown IDs fail validation before checkpoint persistence. Entities are extracted from sanitized event metadata with their own evidence IDs rather than accepted as unsupported model claims. Blockers and hypotheses retain explicit status, and the MCP server instructs clients to treat hypotheses as unverified.
+Only the selected provider receives a bounded, already-sanitized input:
 
-Evidence IDs prove grounding to accepted input metadata; they do not independently prove that the source application’s semantic label was true. Continuum is context infrastructure, not a tamper-proof audit log.
+- at most 15 events for checkpointing;
+- a bounded Context Pack and chat history for chat;
+- no prior local-only checkpoint in a cloud request;
+- no local-only Context Diff in an OpenAI briefing request.
 
-## Privacy verification
+All provider-generated checkpoint evidence IDs must belong to the supplied event set. Any unknown ID fails validation. Provider error storage uses stable error codes rather than raw model output.
 
-The **Synthetic deterministic replay** intentionally contains a secret canary. Core tests assert the canary exists in the source fixture but appears nowhere in persisted events or checkpoints. Adapter suites cover secret paths, URL stripping, private commands, secret-shaped commit metadata, durable sanitized queues, and Git hook overwrite refusal. A genuine sanitized trace is produced only by `npm run cli -- export-recording <output.jsonl> [projectId]`; that exporter refuses demo-contaminated projects and requires all four live sources.
+There is no provider fallback. An unavailable Apple model, Ollama daemon, or OpenAI configuration is displayed as that provider’s own failure.
 
-Run:
+## Local REST, SSE, and MCP
 
-```sh
-npm run verify
-npm --prefix collectors/chrome run verify
-npm --prefix integrations/zsh run verify
-npm --prefix integrations/git run verify
-```
+The local daemon binds only to `127.0.0.1`, `localhost`, or `::1`. Its 32-byte random bearer token is stored in a mode-`0600` file under a mode-`0700` data directory when the filesystem permits. `/health` reveals only process health.
 
-The measured `npm run verify` pass includes 32 engine tests, including received-at event expiry, cloud-boundary/MCP isolation, local-only diff refusal, stable provider error codes, aggregate-only drops, evidence-bearing entities, secret rejection, and canary absence; it also includes 29 collector tests and 6 Swift tests. `npm audit` reported zero known vulnerabilities. Before a public submission, still inspect the database and daemon logs from a genuine collector session using synthetic secrets. These tests are not a substitute for reviewing the final captured trace.
+The stdio MCP server opens SQLite read-only with `PRAGMA query_only`, reserves stdout for JSON-RPC, bounds every result, and emits only cloud-eligible context. MCP reads cannot acknowledge a checkpoint, change settings, create chat, or move the diff baseline.
 
-## Threat model limitations
+## Synchronization boundary
 
-- Heuristics cannot recognize all secrets or sensitive business context.
-- Local malware or another process with the user’s filesystem privileges can access local queues/database.
-- Checkpoint deletion controls are not implemented; all collector retry queues enforce 24-hour expiry.
-- The source-run app is not signed, notarized, hardened, or sandboxed.
-- OpenAI eligibility is controlled by classification plus provider selection, not a per-request consent dialog.
-- There is no encryption-at-rest layer beyond macOS user/file permissions.
+Synchronization is optional. The local sync client sends only operations that remain eligible under the current policy. Confidential data is converted to no outbound payload. Expired raw-event operations are scrubbed to payload-free tombstones.
+
+The cloud service repeats strict entity-schema, secret, URL/path, classification, eligibility, event-age, sequence, HLC, idempotency, and immutable-collision checks before PostgreSQL persistence. Every query and projection operation is scoped by the authenticated account.
+
+Authentication options:
+
+- Auth0 access tokens validated against issuer, audience, and required scopes;
+- copy-once API keys in `ctm_<id>_<secret>` form, stored only as a server-peppered HMAC-SHA-256 digest.
+
+An API key binds to the first physical sync device that uses it. A different device cannot reuse it. Revoking the device atomically revokes keys bound to that device. Native refresh credentials are stored only in macOS Keychain; PWA tokens remain in the Auth0 SPA flow.
+
+PostgreSQL is the synchronized source of truth. Neo4j is a rebuildable projection and receives only eligible graph state from the PostgreSQL outbox. Sync continues during a projection outage; the service reports degradation and can replay the outbox after recovery.
+
+This release is TLS-protected and server-queryable, not zero-knowledge end-to-end encrypted. The self-hosted server can process eligible plaintext context for search, graph, chat, and MCP.
+
+## Retention and deletion
+
+- Raw sanitized events in the primary local database use trusted daemon receipt time and expire after the policy’s 1–24-hour interval.
+- Server event expiry is capped at 24 hours from the event’s occurrence/accepted record.
+- Collector queues physically remove records older than 24 hours before persistence/retry.
+- Migration backups are created only after already-expired raw events are purged. Removal is scheduled after 24 hours while Continuum runs, and overdue backups are removed on the next launch after downtime.
+- Checkpoints retain concise evidence summaries and IDs, not raw content.
+- Mutable synchronized deletions use tombstones retained for 30 days so offline devices cannot resurrect data.
+- Chat synchronization follows the session/message eligibility; confidential conversations remain local.
+
+## Privacy verification checklist
+
+Use synthetic canaries only in an isolated test database and test account. Search all of the following for the full canary and meaningful substrings:
+
+1. collector retry queues;
+2. SQLite tables, FTS rows, vector inputs, migration backups, and logs;
+3. provider request captures and provider error storage;
+4. REST/SSE and local MCP output;
+5. sync frames and PostgreSQL rows;
+6. Neo4j node/edge properties and projection logs;
+7. remote REST/MCP/PWA responses;
+8. native and PWA chat history.
+
+The expected result is absence of the secret payload everywhere, with only fixed aggregate audit rule/count evidence. Repeat this check for `.env` paths, authorization headers, URL tokens, private commands, document text, terminal output, and browser content.

@@ -26,13 +26,6 @@ struct ContextDiffView: View {
                         }
                     }
                     HStack {
-                        Button {
-                            Task { await store.loadSyntheticCatchUp() }
-                        } label: {
-                            Label("Load Synthetic Catch-Up", systemImage: "play.circle")
-                        }
-                        .disabled(store.isPerformingAction)
-                        .help("Loads the Monday phase of the bundled deterministic replay for a reproducible demo.")
                         Spacer()
                         Button {
                             Task { await store.generateBriefing() }

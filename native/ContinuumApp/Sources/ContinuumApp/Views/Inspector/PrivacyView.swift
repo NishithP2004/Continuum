@@ -37,6 +37,8 @@ struct PrivacyView: View {
                     )
                 }
 
+                PrivacyControlsView(store: store)
+
                 InspectorCard("Privacy Boundary", systemImage: "hand.raised.fill") {
                     VStack(alignment: .leading, spacing: 10) {
                         PrivacyPromiseRow(
@@ -72,6 +74,28 @@ struct PrivacyView: View {
                                         .font(.body.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                 }
+                            }
+                        }
+                    }
+                }
+
+                if !store.privacyAudit.isEmpty {
+                    InspectorCard("Recent Audit Decisions", systemImage: "checklist.checked") {
+                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                            GridRow {
+                                Text("Rule").font(.caption.weight(.semibold))
+                                Text("Decision").font(.caption.weight(.semibold))
+                                Text("Source").font(.caption.weight(.semibold))
+                                Text("Count").font(.caption.weight(.semibold))
+                            }
+                            ForEach(store.privacyAudit.prefix(30)) { entry in
+                                GridRow {
+                                    Text(entry.rule)
+                                    Text(entry.decision.capitalized)
+                                    Text(entry.source.uppercased())
+                                    Text("\(entry.count)").monospacedDigit()
+                                }
+                                .font(.caption)
                             }
                         }
                     }

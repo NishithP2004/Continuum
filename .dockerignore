@@ -1,0 +1,12 @@
+.git
+.continuum-runtime
+.swiftpm
+.build
+dist
+node_modules
+**/node_modules
+**/dist
+native/ContinuumApp/.build
+apps/web/test-results
+apps/web/playwright-report
+*.log

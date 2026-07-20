@@ -1,184 +1,251 @@
-# Judge Testing Guide
+# Continuum live judge testing
 
-This guide separates measured build/provider/MCP results from environment-dependent or unpublished submission evidence. The current suite, clean bootstrap, Gemma smoke, and FTS5-plus-graph benchmark have passed on the development machine. They do not prove OpenAI credentials, a genuine exported four-collector session, independent-machine setup, vector-mode performance, or a final recorded Codex `/feedback` session.
+This document is both a reproducible test protocol and an evidence log for the final submission commit. It intentionally contains no claim that an environment-dependent check passed until a tester records the command, machine, commit, and result.
 
-## Supported test environment
+Continuum is live-only. The acceptance path is `./script/bootstrap.sh`; it must start empty and must not load test fixtures.
 
-- macOS 14+ on Apple Silicon
-- Node.js 24 and npm
-- Xcode Command Line Tools / Swift 5.10+
-- Optional for live local-model test: Ollama and `gemma3n:e2b`
-- Optional for live cloud test: an `OPENAI_API_KEY` with access to the selected model
-- Optional for live capture: VS Code 1.95+, Chrome 114+, Git, and zsh
+## Evidence header
 
-## One-command demo path
+Complete this immediately before submission:
 
-From the repository root:
-
-```sh
-./script/bootstrap.sh --demo
+```text
+Commit:
+macOS version / hardware:
+Node / npm:
+Xcode / Swift:
+Ollama version and model:
+OpenAI model tested:
+Public service origin:
+Auth0 tenant/application:
+Chrome / VS Code versions:
+Test start/end (timezone):
+Tester:
 ```
 
-Expected behavior:
+Do not copy results from an earlier commit into this block.
 
-1. Dependencies and build products are prepared.
-2. The daemon starts on `127.0.0.1:43117` with a generated bearer token.
-3. A unique project-local demo database is created, and only the Friday phase of `fixtures/jwt-friday-monday.jsonl` is replayed through the real ingestion/privacy/windowing pipeline with the deterministic provider.
-4. Bootstrap terminal/API output and Timeline literally label fixture state **Synthetic deterministic replay**.
-5. Friday has two semantic checkpoints. Press the Inspector toolbar’s **Mark Caught Up** to acknowledge the current Friday checkpoint.
-6. In Context Diff, press **Load Synthetic Catch-Up**; Monday loads and the project now has three checkpoints.
-7. The fixture secret canary is rejected.
-8. Context Diff contains at least four meaningful changes, including a resolved dashboard 401, a disproven clock-skew hypothesis, a decision, files, and commit `a0ada710a0ada710a0ada710a0ada710a0ada710`.
-9. `dist/Continuum.app` launches as a menu-bar accessory app.
+## 1. Repository verification
 
-The bootstrap pointer `.continuum-runtime/active-demo-db` lets `script/run_mcp.sh` open this fresh database without hard-coding its temporary path. An explicit `CONTINUUM_DB` still takes precedence.
-
-If the bootstrap script reports degraded vector retrieval, that is a supported state. It should say `fts_graph`/degraded rather than silently representing vector search as available.
-
-## Recorded verification results
-
-The following commands passed on the development Apple Silicon Mac:
-
-| Command | Recorded result |
-| --- | --- |
-| `npm run verify` | 32/32 engine tests, 29/29 collector tests, 6/6 Swift tests, TypeScript/collector builds and type checks, and MCP subprocess smoke passed. |
-| `./script/bootstrap.sh --demo` | Full clean bootstrap passed with a fresh project-local database and Friday-phase load. |
-| `./script/build_and_run.sh --verify` | Staged `dist/Continuum.app`, `Info.plist`, executable, and daemon health verified. |
-| `npm run smoke:ollama` | Real `gemma3n:e2b` call returned a schema-valid checkpoint. |
-| `npm audit` | Zero known vulnerabilities. |
-| Normal app embedding warm-up | Official MiniLM `q4` weights downloaded and engine state reached `hybrid`. |
-| `npm run benchmark:retrieval` | Correct result retrieved from 10,000 synthetic checkpoints in 9.4 ms, explicit `fts_graph` mode. |
-| Ephemeral Codex MCP resumption | `codex exec -m gpt-5.6-sol` called `resume`, then `diff`, and returned the grounded file/commit/blocker/next action. |
-
-These are local results on the development machine and are tied to verified implementation commit `7f3e0ca2c881f28673caec0658e88c3c7a6d9571`. The clean bootstrap used fresh dependencies/build state and a new demo database; it is not evidence from an unrelated judge machine.
-
-Live-provider status at this refresh:
-
-- `npm run smoke:openai` has not run because `OPENAI_API_KEY` is absent.
-- The local ephemeral Codex handoff passed, but the primary recorded `/feedback` session is pending.
-- Screenshots, the public video, public repository, and Devpost publication are pending.
-
-## Deterministic verification
-
-Run:
+From a clean checkout with Node 24:
 
 ```sh
+npm ci
 npm run verify
 ```
 
-The core tests cover:
+`verify` runs TypeScript builds/type checks, engine tests, all collector tests, Swift tests, cloud tests, PWA unit tests, production builds, and the local MCP subprocess smoke test.
 
-- daemon bearer authentication;
-- event deduplication and aggregate secret auditing;
-- collector aggregate-drop events being consumed as audit-only records;
-- the Friday-to-Monday fixture producing three checkpoints and at least four changes;
-- the acknowledged baseline;
-- the 12,000-character Context Pack bound;
-- oversized single-pack and MCP diff hard-bound behavior;
-- populated graph nodes;
-- the privacy canary’s absence from event and checkpoint storage;
-- physical normalized-event expiry by trusted `received_at` while checkpoints remain;
-- cloud exclusion of confidential events, prior local-only checkpoint text, local-only Context Diffs, and local-only checkpoints from all MCP tools;
-- deterministic checkpoint and entity evidence plus rejection of hallucinated evidence IDs;
-- stable provider failure codes without raw model-output snippets;
-- canonical project identities across repository-root collectors;
-- Ollama repair and global concurrency-one behavior;
-- OpenAI `store:false`, every preset, custom model schema behavior, and evidence validation through mocked provider responses.
-
-On the current MVP, the root command includes the core suite, all four collector suites, native Swift tests, TypeScript/collector builds, and the MCP subprocess smoke test. To isolate a component failure, run:
+Run the browser and staged-app checks separately:
 
 ```sh
-npm run verify -w @continuum/vscode-collector
-npm --prefix collectors/chrome run verify
-npm --prefix integrations/zsh run verify
-npm --prefix integrations/git run verify
-swift test --package-path native/ContinuumApp
-```
-
-Build/stage verification:
-
-```sh
+npm run test:web:e2e
 ./script/build_and_run.sh --verify
 ```
 
-This command has passed on the development machine. `.codex/environments/environment.toml` also provides a Codex **Run** action wired to `./script/build_and_run.sh`. Repeated launches stop only a daemon verified as belonging to this repository, refuse unrelated port owners, bind readiness to the newly launched PID, and detach the daemon from the invoking shell before opening the app.
+Expected evidence:
 
-## Inspect engine health
+- every command exits zero;
+- local MCP stdout remains valid JSON-RPC with diagnostics on stderr;
+- `dist/Continuum.app` contains the native executable and Foundation Models helper;
+- the app launches as both a Dock application and menu-bar item;
+- no runtime fixture route or replay control appears.
 
-```sh
-npm run doctor
-```
-
-The report includes Node version, database and token paths, sqlite-vec availability, embedding model status, provider health, and selected models. Interpret it carefully:
-
-- `sqliteVector: false` or unavailable embeddings means supported FTS5-plus-graph degradation.
-- OpenAI “available” currently means an API key is configured; it is not a live API request.
-- Ollama health checks the local `/api/tags` endpoint, but checkpoint generation still needs a separate smoke test.
-
-## Replay assertions
-
-Run the fixture directly against a fresh temporary data directory so a prior replay cannot be deduplicated:
-
-```sh
-continuum_fixture_data="$(mktemp -d)"
-CONTINUUM_DATA_DIR="${continuum_fixture_data}" CONTINUUM_DISABLE_EMBEDDINGS=1 npm run demo
-```
-
-Expected output contains:
-
-- `label: "Synthetic deterministic replay"`;
-- `checkpoints: 3`;
-- one dropped/secret event;
-- a baseline set to the second checkpoint;
-- a bounded Context Pack with checkpoint provenance;
-- a Context Diff that cites checkpoint IDs.
-
-Do not publish the canary value from logs or screenshots. Its presence in the fixture source and absence from persistence is asserted by the automated test.
-
-## MCP smoke test
-
-The repository includes `.codex/config.toml` for the current workspace. It invokes `script/run_mcp.sh`, which uses an explicit `CONTINUUM_DB`, the latest bootstrap pointer, or the default database in that order. Build and print/regenerate the configuration if the clone path differs:
-
-```sh
-npm run build
-npm run cli -- mcp-config
-```
-
-Copy the emitted block into `.codex/config.toml`, restart Codex in this project, and verify:
-
-1. The `continuum` server discovers exactly `current`, `timeline`, `search`, `resume`, and `diff`.
-2. `resume({ projectId: "continuum-demo" })` returns the correct blocker/files and stays under 12,000 characters.
-3. `diff({ projectId: "continuum-demo" })` returns the acknowledged baseline and does not change it.
-4. `search({ query: "dataset UUID dashboard 401", projectId: "continuum-demo" })` returns checkpoint provenance.
-5. Hypotheses remain labeled `active`, `supported`, or `disproven` and are not stated as facts.
-6. MCP diagnostics appear on stderr and stdout remains valid JSON-RPC.
-7. A checkpoint backed by any confidential event is absent from every MCP tool while remaining available to the local inspector.
-
-Final product test:
+Record result:
 
 ```text
-Continue where I left off.
+npm run verify:
+Playwright:
+staged app verify:
 ```
 
-The acceptable answer cites a checkpoint ID, commit `a0ada710…`, and `src/DashboardAuth.ts`, distinguishes the disproven clock-skew hypothesis, and recommends validating the dataset UUID with the preserved RLS clause. No pasted history should be present in the user prompt.
+## 2. Clean live bootstrap
 
-An ephemeral local `codex exec -m gpt-5.6-sol` run passed this acceptance test: it invoked Continuum `resume`, recovered to the 12,000-character contract bound, invoked `diff`, and grounded the handoff in checkpoint `69359515-7842-407f-bdb4-eebb6ccf9231`, the file, commit, resolved 401, disproven hypothesis, and correct next action. This is not the still-pending primary `/feedback` session.
-
-`npm run verify` includes `script/mcp-smoke.mjs`, which creates a temporary fixture database, discovers the five tools, calls each tool, checks compatibility text plus `structuredContent.data`, and byte-compares SQLite before/after a read. MCP opens the database read-only, enables sqlite-vec extension access when an initialized vector table exists, and otherwise continues in explicit degraded mode. Treat the manual Codex run and captured `/feedback` session as separate required product evidence, not an assumed pass from the protocol smoke test.
-
-## Retrieval benchmark
-
-Run:
+Stop any prior Continuum process, preserve any real database you need, and use a new empty data directory for this check. Then run:
 
 ```sh
-npm run benchmark:retrieval
+CONTINUUM_DATA_DIR=/private/tmp/continuum-live-acceptance ./script/bootstrap.sh
 ```
 
-The command creates a temporary database, inserts 10,000 synthetic checkpoints, disables embeddings to force `fts_graph`, retrieves a known lexical checkpoint, fails at 500 ms or above, prints JSON, and removes the temporary data. The measured development-machine result was **9.4 ms** with the expected checkpoint present.
+Expected:
 
-This supports a qualified FTS5-plus-graph claim only. It is not evidence for vector-mode latency, a different machine, or a clean clone.
+1. dependency installation and verification complete;
+2. the loopback daemon becomes healthy;
+3. the Dock app and menu-bar item appear;
+4. Now/Timeline start empty and show live onboarding rather than a seeded project;
+5. Settings opens from the menu and with Command-comma;
+6. Privacy shows configurable sources/metadata plus locked immutable protections;
+7. the database contains no runtime fixture source/project/model.
 
-## Live Ollama smoke test
+Database check:
+
+```sh
+sqlite3 /private/tmp/continuum-live-acceptance/continuum.sqlite \
+  "select count(*) from events where source='demo'; select count(*) from checkpoints where model='fixture-rules-v1';"
+```
+
+Both values must be zero. Synthetic fixtures under test directories are allowed; runtime rows are not.
+
+Record result:
+
+```text
+Bootstrap:
+Empty state:
+Fixture query:
+Settings / Command-comma:
+```
+
+## 3. Live collector matrix
+
+Use a disposable Git repository containing no secrets. Confirm the same global project appears for VS Code, terminal, Git, approved-folder, and Chrome events.
+
+| Source | Live action | Expected retained metadata | Evidence to capture |
+| --- | --- | --- | --- |
+| VS Code | Focus a trusted single-root workspace; open and save a non-sensitive file. | Workspace focus and workspace-relative active/save metadata; no body. | Activity rows, active lease source `vscode`, queue drained. |
+| zsh | Source the integration; run a safe command from the repository. | Safe command shape, relative cwd, duration, exit code; no output. | Activity row and lease source `terminal`. |
+| Git | Install hooks in the disposable repo; commit and checkout. | SHA, branch, sanitized subject, operation, bounded relative paths. | Activity/timeline rows; no patch/blob/remote. |
+| Chrome | Pair; allow one documentation domain; focus that tab while a lease exists. | Foreground allowlisted host and optional sanitized path. | Popup shows resolved project read-only; Activity shows Chrome. |
+| macOS app | Activate, launch, and quit a harmless app. | Sanitized app name, bundle ID, lifecycle action. | OS app rows and collector health. |
+| focused window | Explicitly enable; approve Accessibility; focus a non-sensitive window. | Sanitized title and app metadata, classified confidential/local-only. | Window row local only; permission health recovers. |
+| approved folder | Approve a disposable subfolder; create/rename a non-sensitive file. | Coalesced relative path/change kind only. | Folder row on the approved project; no body. |
+
+Also verify:
+
+- capture pause/resume affects all sources without crashing;
+- each source toggle stops that source independently;
+- an offline collector keeps only its bounded sanitized queue and drains after daemon recovery;
+- retrying the same event increments duplicate handling rather than storing another event;
+- queued records disabled by a newer policy are dropped before persistence;
+- switching projects flushes the prior project window;
+- windows flush at 15 events, after 30 seconds, and with **Checkpoint Now**.
+
+Record result:
+
+```text
+VS Code:
+zsh:
+Git:
+Chrome:
+macOS apps:
+window titles:
+approved folder:
+offline/dedupe/policy replay:
+```
+
+## 4. Project identity and lease behavior
+
+### Clone matching
+
+1. Capture activity in a disposable Git repository.
+2. Clone it to a different path on the same or second test Mac.
+3. Capture VS Code/terminal activity in the clone.
+4. Confirm both device-local aliases map to one global UUID when root commits and normalized names have one exact match.
+
+Search the event transport/database to ensure neither absolute clone path nor Git remote was retained or synchronized.
+
+### Ambiguous match
+
+Create two candidate projects with the same fingerprint/name in the isolated test database, then ingest a new alias. Expected:
+
+- a provisional project is created;
+- `/v1/projects/identity/conflicts` returns a pending conflict and candidates;
+- **Settings → Privacy → Project identity** shows the pending conflict, candidate picker, and explicit confirmation alert;
+- only a listed target UUID is accepted;
+- stale aliases and invalid targets fail without partial remapping.
+
+### Lease authority
+
+Verify VS Code/terminal activity overrides lower-authority Git/folder leases. Git expires after two minutes; ordinary strong leases expire after five minutes. Chrome must stop capturing when the lease expires and must not extend `expiresAt` after Chrome activity. A confirmed manual project selection can establish its separate lease.
+
+Record result:
+
+```text
+Clone match:
+Ambiguous confirmation:
+Authority / expiry:
+Chrome cannot renew:
+```
+
+## 5. Privacy canaries
+
+Use fake, easily searchable values in an isolated data directory/account. Include:
+
+- an OpenAI-shaped synthetic key;
+- `Authorization: Bearer ...`;
+- a private-key marker;
+- `.env` and credential-like paths;
+- a URL containing userinfo, token query, and fragment;
+- a leading-space private command;
+- an environment assignment;
+- heredoc/multiline command input;
+- distinctive document text and terminal output that never enters a collector event.
+
+After exercising every adapter, chat, checkpoint provider, sync, and MCP path, search:
+
+- adapter queue files;
+- SQLite tables, FTS data, vector inputs, and migration backups;
+- daemon/app/provider logs;
+- captured provider requests;
+- local REST/SSE/MCP responses;
+- sync frames and PostgreSQL;
+- Neo4j properties and projection logs;
+- PWA responses and native/remote chat history.
+
+Expected: the payload and meaningful substrings are absent everywhere. Only fixed aggregate rule/source/action/count/time rows exist in `privacy_audit`; there is no event ID or rejected value in the audit.
+
+Toggle every mutable privacy control and prove the four immutable fields remain true in API responses and storage. Confirm confidential window/chat data never becomes cloud/provider/sync/MCP eligible.
+
+Record result:
+
+```text
+Secret canaries:
+Prohibited content:
+Audit shape:
+Mutable toggles:
+Immutable protections:
+Confidential isolation:
+```
+
+## 6. Retention and migrations
+
+Automated migration tests must cover upgrade from the prior SQLite schema, transaction rollback, backup creation, live-data preservation, global UUID mapping, privacy-audit migration, and removal of demo-exclusive provenance only.
+
+Manual checks on a copied database:
+
+1. place expired and unexpired live events in the old schema;
+2. open it with the new engine;
+3. confirm the expired raw event is purged before the migration backup;
+4. confirm unexpired live data/checkpoints/settings survive;
+5. confirm runtime fixture-only rows are gone;
+6. confirm backup filenames are versioned, the running-process 24-hour removal is scheduled, and overdue files are removed on the next launch.
+
+Set retention below 24 hours and confirm local expiry honors it. Confirm server raw events never exceed 24 hours, pending raw-event operations are scrubbed to tombstones, and deletion tombstones remain available for offline convergence for 30 days.
+
+Record result:
+
+```text
+Automated migration tests:
+Backup / live preservation:
+Local event expiry:
+Server expiry / tombstones:
+```
+
+## 7. Model providers
+
+No provider smoke test is valid unless it invokes that real provider on the recorded machine.
+
+### Apple Foundation Models
+
+On an eligible macOS 26 Apple Intelligence machine:
+
+```sh
+npm run smoke:apple
+```
+
+Expected: health is available and a schema/evidence-valid checkpoint is returned. Exercise cited streaming chat and cancellation.
+
+On macOS 14–25 and on macOS 26 with each unavailable condition, confirm the helper reports the exact ineligible, Apple-Intelligence-disabled, model-not-ready, or unsupported-locale state. The selected provider must not change automatically after failure.
+
+### Ollama
 
 ```sh
 npm run setup:models
@@ -186,118 +253,218 @@ npm run doctor
 npm run smoke:ollama
 ```
 
-Then:
+Expected: `gemma3n:e2b` returns a schema-valid checkpoint with only supplied event IDs. Stop Ollama while selected and confirm the error is visible and no OpenAI request occurs.
 
-1. Select Local / `gemma3n:e2b` in Continuum Settings.
-2. Produce at least one new sanitized collector event.
-3. Press **Checkpoint Now**.
-4. Verify the checkpoint provider/model fields are `ollama` / `gemma3n:e2b`.
-5. Verify every factual checkpoint item cites one of that window’s event IDs.
-6. Stop Ollama and repeat once: Continuum must report provider failure and must not fall back to OpenAI.
-
-This real smoke command passed with `gemma3n:e2b` on the development machine. The interactive collector-to-checkpoint and stopped-Ollama behavior remain useful final-demo rehearsals, and a different machine still requires its own model installation.
-
-## Live OpenAI smoke test
+### OpenAI
 
 ```sh
-export OPENAI_API_KEY="your-key"
+export OPENAI_API_KEY='test-account-key'
 npm run smoke:openai
-./script/build_and_run.sh
 ```
 
-Then:
+Exercise Sol, Terra, Luna, and a mocked custom ID at the contract boundary. Capture the request and confirm `store:false`, bounded sanitized input, and no local-only prior checkpoint. Confirm the key is absent from SQLite, logs, UI state, and sync frames.
 
-1. Select OpenAI and test `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` only if the account has access.
-2. For each tested model, create a checkpoint from sanitized public/personal events and verify the shared schema/evidence contract.
-3. Test an advanced custom ID with a mock or an actually available model; record which was used.
-4. Create a confidential synthetic event and verify it and prior local-only checkpoint text are excluded from OpenAI input.
-5. Create a secret-shaped synthetic event and verify it is rejected before persistence.
-6. Verify a Context Diff containing a local-only checkpoint is refused for briefing; generate an eligible briefing and verify it adds no facts beyond the diff.
+Record result:
 
-This smoke command has not run because no API key is configured. Do not expose the API key in screenshots, shell history, logs, or test fixtures. Do not describe `store:false` as Zero Data Retention.
+```text
+Apple eligible:
+Apple unavailable states:
+Ollama:
+OpenAI presets / custom mock:
+No fallback:
+Evidence validation:
+```
 
-## Live collector matrix
+## 8. Checkpoint, Context Diff, graph, and chat
 
-Before capture, print the canonical ID and paste it into Chrome:
+Using live events only:
+
+1. create at least three checkpoints containing a resolved/added blocker, a changed hypothesis, a decision, a file, and a commit;
+2. explicitly acknowledge the first checkpoint;
+3. create later live activity and request Context Diff;
+4. confirm both checkpoint IDs and every typed change citation;
+5. read `resume` and `diff` repeatedly and prove the acknowledged baseline does not move;
+6. query/expand the same graph from SwiftUI and the PWA;
+7. verify graph responses never exceed 500 nodes/1,000 edges and pagination/truncation is explicit.
+
+In native chat, ask for current focus, context search, and change since baseline. Expected citations include real checkpoint IDs and relevant files/commits; active hypotheses are visibly unverified. Ask to create a checkpoint, acknowledge a baseline, and select a project. Each must remain pending until the confirmation button is pressed. Reject one action and confirm there was no state change.
+
+Exercise user-secret rejection, provider-response secret rejection, streaming cancellation, provider outage, confidential local chat, and eligible synchronized chat.
+
+In remote chat, confirm `search_context`/`get_diff` complete immediately, `ack_baseline` changes synchronized state only after confirmation, and confirmed `create_checkpoint`/`select_project` return `paired_mac_required` without queueing a device command. A cancelled run must discard proposals and must not persist a completed assistant response.
+
+Record result:
+
+```text
+Checkpoint evidence:
+Context Diff / baseline:
+Native graph:
+PWA graph:
+Chat citations / hypotheses:
+Action confirmation:
+Remote action boundary:
+Secret / cancellation / provider failures:
+```
+
+## 9. Local and remote MCP
+
+The automated subprocess check is part of `npm run verify`. It must cover discovery and all six tools with bounded output, clean stdout, and no write behavior.
+
+For the final live Codex check:
+
+1. build and run Continuum with real checkpoints;
+2. run `npm run cli -- mcp-config` and verify the absolute workspace path;
+3. restart Codex;
+4. prompt only **Continue where I left off.**
+
+Expected: Codex calls Continuum, cites the correct checkpoint/file/commit, labels an active hypothesis unverified, and recommends a grounded next action. No pasted history is provided. MCP reads do not acknowledge the baseline.
+
+For remote MCP at `/mcp`, test discovery and all six tools with:
+
+- valid Auth0 `context:read` token;
+- valid scoped API key;
+- missing scope;
+- wrong issuer/audience;
+- expired/revoked key;
+- another account’s project/entity IDs;
+- malformed Streamable HTTP requests.
+
+Expected: valid requests see only the authenticated tenant’s eligible synchronized context. Invalid/missing auth fails, tenant IDs cannot be selected by the client, and all tools remain read-only.
+
+Record result:
+
+```text
+Local MCP smoke:
+Live Codex handoff:
+Remote MCP OAuth:
+Remote MCP API key:
+Scope / tenant isolation:
+Primary Codex /feedback session ID:
+```
+
+## 10. Synchronization and authentication
+
+Start the real stack with configured Auth0 and HTTPS:
 
 ```sh
-npm run --silent project-id -- /path/to/repository
+docker compose --env-file infra/.env -f infra/docker-compose.yml up --build
 ```
 
-VS Code, zsh, and Git derive that same ID when their observed root is the canonical repository root. `CONTINUUM_HOST` accepts only `127.0.0.1`, `localhost`, or `::1`; `OLLAMA_URL` is likewise restricted to credential-free loopback HTTP.
+Verify:
 
-| Collector | Action | Expected safe event | Negative assertion |
-| --- | --- | --- | --- |
-| VS Code | Focus/save a file in a trusted single-root workspace. | Workspace-relative path and language ID. | No document text; secret/generated/outside paths absent or aggregated. |
-| zsh | Run a safe test command. | Safe command shape, relative cwd, duration, exit code. | No output or full sensitive arguments; private/heredoc/assignment commands aggregated. |
-| Git | Commit and checkout in a repo with installed hooks. | SHA, branch, subject, operation, relative paths. | No patch/blob/remote; installer refuses existing hooks. |
-| Chrome | Focus an allowed documentation URL containing query and fragment. | Allowlisted host and sanitized path. | No query, fragment, title, DOM, history, cookies, background or incognito tab. |
+- native Authorization Code + PKCE sign-in through `ASWebAuthenticationSession`;
+- refresh credential exists in Keychain and no refresh/access token exists in preferences/SQLite/logs;
+- PWA Authorization Code + PKCE and audience/scopes;
+- copy-once `ctm_...` key display and peppered digest-only database storage;
+- first-push/pull API-key device binding and rejection on a different device;
+- device revocation also revokes bound keys;
+- offline local changes replay in order with no duplicate materialization;
+- sequence gaps and idempotency collisions return conflict;
+- HLC last-write-wins converges mutable policy/settings;
+- immutable record replacement and resurrection are rejected;
+- deletion tombstones converge after offline use;
+- chat, baselines, settings, projects, checkpoints, and explicit graph mutations synchronize;
+- confidential/ineligible records never cross the sync boundary.
 
-Disconnect the daemon for each collector, generate one safe event, reconnect, and confirm the sanitized queue retries once effectively; the daemon should count retry duplicates instead of creating duplicate events.
+Stop Neo4j while PostgreSQL/cloud stay available. Sync must continue, graph status must show projection degradation/lag, and remote graph must use the bounded PostgreSQL fallback. Restart Neo4j, replay the outbox, then perform a full confirmed projection rebuild and compare the resulting graph.
 
-To create a genuine sanitized trace after all four sources have produced events for one non-demo project:
+Record result:
+
+```text
+Native Auth0 / Keychain:
+PWA Auth0:
+API keys / device binding:
+Offline replay / conflicts:
+Tombstones / revocation:
+Projection outage / recovery / rebuild:
+```
+
+## 11. UI and accessibility
+
+Native checks:
+
+- launch visibility, Dock/menu coexistence, singleton main window, and Settings frontmost behavior;
+- Command-comma, capture controls, checkpoint, catch-up, and quit;
+- independent engine, collector-permission, provider, vector, sync, and projection health;
+- Accessibility denial/grant recovery;
+- daemon loss/reconnect and SSE/polling recovery;
+- model/provider changes without crash or fallback;
+- graph pan/zoom/search/filter/fit/reset/selection/Open in Chat;
+- VoiceOver labels, keyboard navigation, high contrast, reduced motion, light/dark mode.
+
+PWA Playwright checks:
+
+- Auth0 callback/protected routes;
+- installable manifest/service worker;
+- Now, Chat, Graph, Timeline, Privacy, Devices, Settings;
+- desktop and narrow mobile layouts, including selected-node bottom sheet;
+- chat SSE/cancel/reconnect and graph interaction;
+- privacy editing, device revocation, API-key administration, remote MCP instructions;
+- keyboard navigation, visible focus, high contrast, reduced motion, light/dark mode.
+
+Record result:
+
+```text
+Native UI:
+Native accessibility:
+PWA desktop/mobile:
+PWA accessibility/installability:
+```
+
+## 12. Performance and bounds
+
+Local retrieval:
 
 ```sh
-npm run cli -- export-recording <output.jsonl> [projectId]
+npm run benchmark:retrieval
 ```
 
-The exporter refuses any demo-contaminated project, refuses a project missing VS Code, terminal, Git, or Chrome, and refuses to overwrite an existing file. Fixture replay must never be called a recorded live session.
+The command creates test-only synthetic checkpoints in a temporary database, requires the expected result in a 10,000-checkpoint corpus, and fails at 500 ms. This benchmark data is never loaded into the app.
 
-## Native app checks
+Also benchmark local and remote graph queries at 500 nodes/1,000 edges, native Canvas interaction, and Sigma.js desktop/mobile interaction. Record cold/warm timings, hardware, projection mode, and whether vectors were available; do not compare measurements from different modes as if they were equivalent.
 
-1. Confirm no Dock icon appears and the menu-bar status item does.
-2. Stop the daemon; verify the UI becomes disconnected without crashing.
-3. Restart the daemon; verify authenticated SSE reconnects after its two-second retry delay while the 15-second polling fallback remains active.
-4. Pause capture and confirm ingestion returns no accepted events; resume and confirm capture continues.
-5. Switch local/cloud provider and model; confirm the menu-bar label and Provider Health update.
-6. Trigger a manual checkpoint.
-7. Open every Inspector section: Now, Activity, Timeline, Context Diff, Privacy, Provider Health.
-8. On the Friday synthetic state, press **Mark Caught Up** and verify it becomes the baseline.
-9. Press **Load Synthetic Catch-Up** and verify Monday appears without moving that baseline.
-10. Force embeddings off and confirm the inspector shows degraded retrieval.
-11. Confirm Privacy shows fetched aggregate rule counts and Timeline labels fixture checkpoints **Synthetic deterministic replay**.
-12. With a configured key and cloud-eligible diff, press **Generate GPT Briefing**; confirm local-only diffs are refused.
+Record result:
 
-The current app uses authenticated SSE revision events as its live path, retries a failed stream after two seconds, and independently refreshes every 15 seconds as fallback.
+```text
+Retrieval mode / time:
+Local graph:
+Remote Neo4j graph:
+Remote PostgreSQL fallback:
+Native/PWA frame responsiveness:
+```
 
-## Privacy inspection
+## 13. Final live-only acceptance
 
-After a synthetic-secret session, inspect all relevant surfaces without printing real credentials:
+The final acceptance path must use only real activity collected during the session:
 
-- SQLite event titles/attributes and checkpoint JSON;
-- graph labels and FTS values;
-- provider-run metadata;
-- collector queue files;
-- daemon and collector logs;
-- REST `/v1/resume`, `/v1/diff`, and `/v1/privacy`;
-- all MCP tool responses.
+1. clean live bootstrap;
+2. collect VS Code, zsh, Git, Chrome, macOS app, focused-window, and approved-folder metadata;
+3. show a synthetic secret being rejected only as an aggregate audit counter;
+4. create evidence-backed checkpoints;
+5. acknowledge a real baseline and produce a real Context Diff;
+6. inspect the graph and chat in the native app;
+7. sync eligible context to the self-hosted service;
+8. inspect the same graph and chat from the PWA;
+9. call the same context through authenticated remote MCP;
+10. ask Codex only “Continue where I left off” through local MCP.
 
-Expected result: no synthetic secret value, `.env` path, URL query token, private command, file/document text, or terminal output. Privacy audit output may include generic rule names and counts. Collector aggregate-drop messages must not appear in events, checkpoints, FTS, graph, embeddings, or provider input. Provider failures may contain only stable error codes such as `provider_invalid_response`, not raw model responses.
+Before recording, verify no personal secret, private URL, customer name, or proprietary document content is present in the chosen live session.
 
-## Checks not yet proven by the deterministic suite
+## Submission artifact checklist
 
-Do not claim these without separate evidence on the final commit:
+Mark only artifacts that exist and are public/accessible:
 
-- live OpenAI success for every model preset;
-- the final recorded Codex response and primary `/feedback` session (the ephemeral local MCP run passed);
-- all four collectors in one genuine exported live session;
-- bootstrap on an independent judge machine without repository caches;
-- vector-mode or cross-machine retrieval latency;
-- signed/notarized packaging.
+```text
+[ ] Licensed public repository
+[ ] README setup and supported-platform statement
+[ ] Architecture and privacy documentation
+[ ] Exact final test log for submission commit
+[ ] Codex collaboration/decision log
+[ ] GPT-5.6 usage explanation
+[ ] Primary Codex /feedback session ID
+[ ] Devpost description
+[ ] Screenshots from live data
+[ ] Public sub-three-minute YouTube video
+```
 
-## Final submission record
-
-Fill this table after testing; leave failures explicit.
-
-| Check | Commit | Machine/environment | Result | Evidence link |
-| --- | --- | --- | --- | --- |
-| `npm run verify` | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development Apple Silicon Mac | **PASS** — 32 engine, 29 collector, 6 Swift, build/typecheck, MCP smoke | `[TERMINAL_EVIDENCE_LINK]` |
-| Staged app/daemon verify | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development Apple Silicon Mac | **PASS** | `[TERMINAL_EVIDENCE_LINK]` |
-| Full clean bootstrap | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development Apple Silicon Mac | **PASS** — fresh project-local demo database | `[TERMINAL_EVIDENCE_LINK]` |
-| Gemma 3n live | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development machine | **PASS** — real schema-valid `gemma3n:e2b` output | `[TERMINAL_EVIDENCE_LINK]` |
-| MiniLM hybrid warm-up | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development machine | **PASS** — official `q4` weights, `hybrid` ready | `[TERMINAL_EVIDENCE_LINK]` |
-| `npm audit` | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development machine | **PASS** — zero known vulnerabilities | `[TERMINAL_EVIDENCE_LINK]` |
-| OpenAI live | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development machine | **NOT RUN — missing key** | `[LINK]` |
-| Four-collector live session | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | `[ENV]` | **NOT YET RECORDED** | `[LINK]` |
-| Codex MCP resumption | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development machine | **PASS — ephemeral GPT-5.6 Sol `resume` + `diff`; primary `/feedback` pending** | `[PRIMARY_CODEX_FEEDBACK_SESSION_ID]` |
-| 10k retrieval benchmark | `7f3e0ca2c881f28673caec0658e88c3c7a6d9571` | Development Apple Silicon Mac | **PASS — 9.4 ms, `fts_graph`** | `[TERMINAL_EVIDENCE_LINK]` |
+Do not insert placeholder URLs, session IDs, or “passed” claims into submission material.

@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rm } from "node:fs/promises";
+import { resolve } from "node:path";
 import { CheckpointV1Schema, type CheckpointV1 } from "@continuum/contracts";
 import { ContextService } from "../src/retrieval/context-service.js";
 import { createEngine, type Engine } from "../src/server/engine.js";
-import { replayFixture } from "../src/fixtures/replay.js";
+import { replayFixture } from "./replay-fixture.js";
 import { testConfig } from "./helpers.js";
 
 const LOCAL_ONLY_MARKER = "CONFIDENTIAL_LOCAL_ONLY_MCP_CANARY";
+const fixturePath = resolve(import.meta.dirname, "fixtures/jwt-friday-monday.jsonl");
 
 function insertLocalOnlyCheckpoint(engine: Engine, projectId: string): CheckpointV1 {
   const createdAt = new Date(Date.now() + 1_000).toISOString();
@@ -59,7 +61,7 @@ describe("cloud-eligible context boundary", () => {
   });
 
   it("filters local-only checkpoints from packs, search expansion, and diffs", async () => {
-    const replay = await replayFixture(engine, engine.config.fixturePath);
+    const replay = await replayFixture(engine, fixturePath);
     const projectId = replay.projectId!;
     insertLocalOnlyCheckpoint(engine, projectId);
     const contexts = new ContextService(engine.database, engine.embeddings, { cloudEligibleOnly: true });
@@ -78,7 +80,7 @@ describe("cloud-eligible context boundary", () => {
   });
 
   it("rejects unknown, cross-project, and local-only baselines", async () => {
-    const replay = await replayFixture(engine, engine.config.fixturePath);
+    const replay = await replayFixture(engine, fixturePath);
     const projectId = replay.projectId!;
     const eligibleCheckpoint = replay.checkpoints[0]!;
     const localOnly = insertLocalOnlyCheckpoint(engine, projectId);

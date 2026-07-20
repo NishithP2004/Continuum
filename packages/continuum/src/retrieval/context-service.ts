@@ -82,7 +82,7 @@ export class ContextService {
   }
 
   async pack(input: { projectId?: string; query?: string; maxCharacters?: number; limit?: number } = {}): Promise<ContextPackV1> {
-    const projectId = input.projectId ?? this.database.latestProjectId(this.queryOptions) ?? "demo";
+    const projectId = input.projectId ?? this.database.latestProjectId(this.queryOptions) ?? "";
     const maxCharacters = Math.min(12_000, Math.max(1_000, input.maxCharacters ?? 12_000));
     const maxCheckpoints = Math.min(12, Math.max(1, input.limit ?? 12));
     const recent = this.database.listCheckpoints(projectId, 100, undefined, undefined, this.queryOptions);
@@ -159,6 +159,7 @@ export class ContextService {
         entities,
         provenance: {
           checkpointIds: checkpoints.map((checkpoint) => checkpoint.id),
+          deviceIds: [...new Set(checkpoints.flatMap((checkpoint) => checkpoint.deviceId ? [checkpoint.deviceId] : []))],
           rankingVersion: "hybrid-rrf-v1",
           degraded,
           maxCharacters
@@ -199,7 +200,7 @@ export class ContextService {
   }
 
   diff(input: { projectId?: string; sinceCheckpointId?: string } = {}): ContextDiffV1 {
-    const projectId = input.projectId ?? this.database.latestProjectId(this.queryOptions) ?? "demo";
+    const projectId = input.projectId ?? this.database.latestProjectId(this.queryOptions) ?? "";
     const baselineId = input.sinceCheckpointId ?? this.database.baseline(projectId);
     const baseline = baselineId
       ? this.database.requireCheckpointForProject(projectId, baselineId, this.queryOptions)
@@ -263,6 +264,7 @@ export class ContextService {
     return ContextDiffV1Schema.parse({
       version: "1",
       projectId,
+      deviceIds: [...new Set([baseline, ...checkpoints].flatMap((checkpoint) => checkpoint?.deviceId ? [checkpoint.deviceId] : []))],
       baselineCheckpointId: baseline?.id ?? null,
       currentCheckpointId: current?.id ?? null,
       generatedAt: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyPrivacyGate, cloudEligible } from "../src/pipeline/privacy.js";
 import { normalizeLoopbackHost } from "../src/runtime.js";
+import { defaultPrivacyPolicy } from "../src/privacy-policy.js";
 import { event } from "./helpers.js";
 
 describe("privacy gate", () => {
@@ -26,6 +27,29 @@ describe("privacy gate", () => {
     }
   });
 
+  it("keeps domains transient when URL host metadata is disabled", () => {
+    const base = defaultPrivacyPolicy();
+    const outcome = applyPrivacyGate(event({
+      source: "chrome",
+      eventType: "tab.activated",
+      title: "Viewing private-project.example.test",
+      attributes: {
+        host: "private-project.example.test",
+        origin: "https://private-project.example.test",
+        url: "https://private-project.example.test/reference/api?view=removed#fragment"
+      }
+    }), {
+      ...base,
+      metadata: { ...base.metadata, urlHosts: false, urlPaths: true }
+    });
+    expect(outcome.accepted).toBe(true);
+    if (outcome.accepted) {
+      expect(outcome.event.title).toBe("Browser activity");
+      expect(outcome.event.attributes).toMatchObject({ path: "/reference/api" });
+      expect(JSON.stringify(outcome.event)).not.toContain("private-project.example.test");
+    }
+  });
+
   it("keeps confidential data local", () => {
     expect(cloudEligible(event({ privacy: { classification: "confidential", rules: [] } }))).toBe(false);
     expect(cloudEligible(event())).toBe(true);
@@ -42,6 +66,22 @@ describe("privacy gate", () => {
     ];
     for (const candidate of cases) {
       const outcome = applyPrivacyGate(candidate);
+      expect(outcome.accepted).toBe(false);
+      if (!outcome.accepted) expect(outcome.secret).toBe(true);
+    }
+  });
+
+  it("rejects common credential families at the local persistence boundary", () => {
+    const credentials = [
+      "ghp_1234567890abcdefghijklmnopqrst",
+      "xoxb-1234567890-abcdefghijklmnop",
+      "AKIA1234567890ABCDEF",
+      "AIza1234567890abcdefghijklmnopqrstuv",
+      "ctm_abcdefghijkl_1234567890abcdefghijklmnopqrstuv",
+      "eyJabcdefghijk.eyJabcdefghijk.abcdefghijk"
+    ];
+    for (const credential of credentials) {
+      const outcome = applyPrivacyGate(event({ title: `credential ${credential}` }));
       expect(outcome.accepted).toBe(false);
       if (!outcome.accepted) expect(outcome.secret).toBe(true);
     }

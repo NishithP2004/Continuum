@@ -1,8 +1,8 @@
-import type { CheckpointDraft, CheckpointV1, NormalizedEventV1 } from "@continuum/contracts";
+import type { CheckpointDraft, CheckpointV1, NormalizedEvent } from "@continuum/contracts";
 
 export interface CheckpointInput {
   projectId: string;
-  events: NormalizedEventV1[];
+  events: NormalizedEvent[];
   previousCheckpoint?: CheckpointV1;
 }
 
@@ -13,7 +13,7 @@ export interface ProviderHealth {
 }
 
 export interface CheckpointProvider {
-  readonly id: "deterministic" | "ollama" | "openai";
+  readonly id: "deterministic" | "apple" | "ollama" | "openai";
   readonly model: string;
   health(): Promise<ProviderHealth>;
   createCheckpoint(input: CheckpointInput, signal?: AbortSignal): Promise<CheckpointDraft>;
@@ -31,7 +31,7 @@ export function isInstructionLike(value: string): boolean {
   return instructionLike.some((pattern) => pattern.test(value));
 }
 
-export function validateEvidence(draft: CheckpointDraft, events: NormalizedEventV1[]): void {
+export function validateEvidence(draft: CheckpointDraft, events: NormalizedEvent[]): void {
   const allowed = new Set(events.map((event) => event.id));
   const evidence = [
     ...draft.progress,

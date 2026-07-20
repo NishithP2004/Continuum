@@ -46,8 +46,8 @@ struct InspectorRootView: View {
                 }
             }
         }
-        .onChange(of: store.inspectorRequestID) {
-            selectedSectionRaw = store.requestedInspectorSection.rawValue
+        .onChange(of: store.navigation.requestID) {
+            selectedSectionRaw = store.navigation.requestedSection.rawValue
         }
         .alert(
             "Continuum couldn’t complete that action",
@@ -91,8 +91,14 @@ private struct InspectorDetailView: View {
             TimelineView(store: store)
         case .contextDiff:
             ContextDiffView(store: store)
+        case .chat:
+            ChatView(store: store)
+        case .graph:
+            GraphView(store: store)
         case .privacy:
             PrivacyView(store: store)
+        case .devices:
+            DevicesView(store: store)
         case .providerHealth:
             ProviderHealthView(store: store)
         }

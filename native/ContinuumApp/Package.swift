@@ -8,12 +8,20 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "ContinuumApp", targets: ["ContinuumApp"])
+        .executable(name: "ContinuumApp", targets: ["ContinuumApp"]),
+        .executable(
+            name: "ContinuumFoundationModelBridge",
+            targets: ["ContinuumFoundationModelBridge"]
+        )
     ],
     targets: [
         .executableTarget(
             name: "ContinuumApp",
             path: "Sources/ContinuumApp"
+        ),
+        .executableTarget(
+            name: "ContinuumFoundationModelBridge",
+            path: "Sources/ContinuumFoundationModelBridge"
         ),
         .testTarget(
             name: "ContinuumAppTests",

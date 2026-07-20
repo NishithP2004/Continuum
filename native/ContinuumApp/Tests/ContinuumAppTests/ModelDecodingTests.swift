@@ -41,6 +41,27 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(state.retrieval.checkpointCount, 3)
     }
 
+    func testDecodesAppleFoundationProviderSettings() throws {
+        let data = Data(
+            #"""
+            {
+              "activeCheckpointProvider": "apple",
+              "activeChatProvider": "apple",
+              "ollamaModel": "gemma3n:e2b",
+              "foundationModel": "apple-system-default",
+              "openaiModel": "gpt-5.6-terra"
+            }
+            """#.utf8
+        )
+
+        let settings = try JSONDecoder().decode(ModelSettings.self, from: data)
+
+        XCTAssertEqual(settings.provider, .apple)
+        XCTAssertEqual(settings.chatProvider, .apple)
+        XCTAssertEqual(settings.model, "apple-system-default")
+        XCTAssertEqual(settings.appleModel, "apple-system-default")
+    }
+
     func testDecodesCheckpointEvidenceAndGraphEntities() throws {
         let data = Data(
             #"""

@@ -8,9 +8,12 @@ const EVENT_FILE = /^[0-9a-f-]+\.json$/i;
 
 export async function pruneQueue(
   queueDir,
-  { nowMs = Date.now(), maxEntries = MAX_QUEUE_EVENTS } = {},
+  { nowMs = Date.now(), maxEntries = MAX_QUEUE_EVENTS, retentionHours = 24 } = {},
 ) {
   if (!Number.isFinite(nowMs)) throw new Error("queue clock must be finite");
+  if (!Number.isInteger(retentionHours) || retentionHours < 1 || retentionHours > 24) {
+    throw new Error("queue retention must be between 1 and 24 hours");
+  }
   if (!Number.isInteger(maxEntries) || maxEntries < 0 || maxEntries > MAX_QUEUE_EVENTS) {
     throw new Error(`queue maximum must be between 0 and ${MAX_QUEUE_EVENTS}`);
   }
@@ -28,7 +31,7 @@ export async function pruneQueue(
     try {
       const event = JSON.parse(await readFile(path.join(queueDir, name), "utf8"));
       const occurredAtMs = Date.parse(event?.occurredAt);
-      if (!Number.isFinite(occurredAtMs) || occurredAtMs < nowMs - QUEUE_TTL_MS) {
+      if (!Number.isFinite(occurredAtMs) || occurredAtMs < nowMs - retentionHours * 60 * 60 * 1_000) {
         remove.add(name);
       } else {
         fresh.push({ name, occurredAtMs });

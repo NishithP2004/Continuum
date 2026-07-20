@@ -13,6 +13,7 @@ struct StatusItemLabel: View {
 
 struct MenuBarContentView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     let store: AppStore
 
     var body: some View {
@@ -22,7 +23,7 @@ struct MenuBarContentView: View {
                 Text(project.name.truncatedForMenu())
             }
             Text(
-                "\(store.modelSettings.provider == .local ? "Local" : "OpenAI") · \(store.modelSettings.model)"
+                "\(store.modelSettings.provider.title) · \(store.modelSettings.model)"
                     .truncatedForMenu()
             )
             Text("\(store.snapshot.pendingEvents) events pending")
@@ -52,8 +53,8 @@ struct MenuBarContentView: View {
         }
         .keyboardShortcut("i", modifiers: [.command, .shift])
 
-        SettingsLink {
-            Text("Settings…")
+        Button("Settings…") {
+            AppPresentation.openSettings(openSettings)
         }
 
         Divider()
@@ -66,7 +67,14 @@ struct MenuBarContentView: View {
 
     private func presentInspector(section: InspectorSection) {
         store.openInspector(at: section)
-        openWindow(id: "inspector")
-        NSApp.activate(ignoringOtherApps: true)
+        if AppPresentation.hasMainWindow {
+            AppPresentation.activate()
+        } else {
+            openWindow(id: AppScene.mainWindowID)
+            NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.async {
+                AppPresentation.activate()
+            }
+        }
     }
 }

@@ -8,7 +8,7 @@ struct ProviderHealthView: View {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ConnectionBanner(status: store.connection)
 
-                if store.snapshot.provider.cloudActive || store.modelSettings.provider == .openai {
+                if store.health.provider.cloudActive || store.modelSettings.provider == .openai {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "cloud.fill")
                             .foregroundStyle(.blue)
@@ -31,20 +31,20 @@ struct ProviderHealthView: View {
                 HStack(spacing: 12) {
                     MetricTile(
                         title: "Provider",
-                        value: store.snapshot.provider.provider.capitalized,
+                        value: store.health.provider.provider.capitalized,
                         systemImage: "server.rack"
                     )
                     MetricTile(
                         title: "Provider status",
-                        value: store.snapshot.provider.status.capitalized,
+                        value: store.health.provider.status.capitalized,
                         systemImage: providerStatusIcon,
                         tint: providerStatusTint
                     )
                     MetricTile(
                         title: "Retrieval mode",
-                        value: store.snapshot.retrieval.mode,
+                        value: store.health.retrieval.mode,
                         systemImage: "magnifyingglass.circle.fill",
-                        tint: store.snapshot.retrieval.degraded ? .orange : .green
+                        tint: store.health.retrieval.degraded ? .orange : .green
                     )
                 }
 
@@ -52,21 +52,21 @@ struct ProviderHealthView: View {
                     Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
                         GridRow {
                             Text("Checkpoints").foregroundStyle(.secondary)
-                            Text("\(store.snapshot.retrieval.checkpointCount)").monospacedDigit()
+                            Text("\(store.health.retrieval.checkpointCount)").monospacedDigit()
                         }
                         GridRow {
                             Text("Graph nodes").foregroundStyle(.secondary)
-                            Text("\(store.snapshot.retrieval.graphNodeCount)").monospacedDigit()
+                            Text("\(store.health.retrieval.graphNodeCount)").monospacedDigit()
                         }
                         GridRow {
                             Text("Graph edges").foregroundStyle(.secondary)
-                            Text("\(store.snapshot.retrieval.graphEdgeCount)").monospacedDigit()
+                            Text("\(store.health.retrieval.graphEdgeCount)").monospacedDigit()
                         }
                     }
-                    if let message = store.snapshot.retrieval.message {
+                    if let message = store.health.retrieval.message {
                         Text(message)
                             .font(.caption)
-                            .foregroundStyle(store.snapshot.retrieval.degraded ? .orange : .secondary)
+                            .foregroundStyle(store.health.retrieval.degraded ? .orange : .secondary)
                     }
                 }
             }
@@ -75,13 +75,13 @@ struct ProviderHealthView: View {
     }
 
     private var providerStatusIcon: String {
-        store.snapshot.provider.status.lowercased() == "ready"
+        store.health.provider.status.lowercased() == "ready"
             ? "checkmark.circle.fill"
             : "exclamationmark.triangle.fill"
     }
 
     private var providerStatusTint: Color {
-        store.snapshot.provider.status.lowercased() == "ready" ? .green : .orange
+        store.health.provider.status.lowercased() == "ready" ? .green : .orange
     }
 }
 
@@ -90,6 +90,7 @@ struct ModelControlsView: View {
     @State private var customModel = ""
 
     private let localModels = ["gemma3n:e2b", "gemma3:1b"]
+    private let appleModels = ["apple-system-default"]
     private let cloudModels = ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
 
     var body: some View {
@@ -131,16 +132,18 @@ struct ModelControlsView: View {
     }
 
     private var availableModels: [String] {
-        store.modelSettings.provider == .local ? localModels : cloudModels
+        switch store.modelSettings.provider {
+        case .local: localModels
+        case .apple: appleModels
+        case .openai: cloudModels
+        }
     }
 
     private var providerBinding: Binding<ProviderKind> {
         Binding(
             get: { store.modelSettings.provider },
             set: { provider in
-                let model = provider == .local
-                    ? store.modelSettings.localModel
-                    : store.modelSettings.cloudModel
+                let model = store.modelSettings.model(for: provider)
                 Task { await store.updateModel(provider: provider, model: model) }
             }
         )
@@ -161,6 +164,8 @@ struct ModelControlsView: View {
         switch store.modelSettings.provider {
         case .local:
             "Ollama runs checkpoint generation on this Mac. Continuum never silently falls back to cloud."
+        case .apple:
+            "Apple Foundation Models runs on-device on eligible macOS 26+ Macs with Apple Intelligence enabled. Unavailability is surfaced; Continuum does not silently switch providers."
         case .openai:
             "OpenAI Responses uses store:false. Provider selection is cloud consent, not a Zero Data Retention claim."
         }

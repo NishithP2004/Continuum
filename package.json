@@ -6,29 +6,32 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "collectors/vscode"
+    "collectors/vscode",
+    "apps/*"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "build": "npm run build -w @continuum/contracts && npm run build -w @continuum/core && npm run build -w @continuum/vscode-collector && npm --prefix collectors/chrome run build",
-    "typecheck": "npm run build -w @continuum/contracts && npm run typecheck -w @continuum/core && npm run build -w @continuum/vscode-collector",
-    "test": "npm run test:engine && npm run test:collectors && npm run test:native",
+    "build": "npm run build -w @continuum/contracts && npm run build -w @continuum/core && npm run build -w @continuum/vscode-collector && npm --prefix collectors/chrome run build && npm --prefix packages/cloud run build && npm --prefix apps/web run build",
+    "typecheck": "npm run build -w @continuum/contracts && npm run typecheck -w @continuum/core && npm run build -w @continuum/vscode-collector && npm --prefix packages/cloud run typecheck && npm --prefix apps/web run typecheck",
+    "test": "npm run test:engine && npm run test:collectors && npm run test:native && npm run test:cloud && npm run test:web",
     "test:engine": "npm run test -w @continuum/core",
     "test:collectors": "npm run test -w @continuum/vscode-collector && npm --prefix collectors/chrome test && npm --prefix integrations/zsh test && npm --prefix integrations/git test",
     "test:native": "./script/swift.sh test --disable-sandbox --package-path native/ContinuumApp",
-    "verify:mcp": "node script/mcp-smoke.mjs",
+    "test:cloud": "npm --prefix packages/cloud test",
+    "test:web": "npm --prefix apps/web test",
+    "test:web:e2e": "npm --prefix apps/web run test:e2e",
+    "verify:mcp": "node packages/continuum/test/mcp-smoke.mjs",
     "verify": "npm run typecheck && npm test && npm run build && npm run verify:mcp",
     "daemon": "npm run dev:daemon -w @continuum/core",
     "mcp": "npm run dev:mcp -w @continuum/core",
     "cli": "npm run dev:cli -w @continuum/core --",
-    "demo": "npm run dev:cli -w @continuum/core -- demo",
     "doctor": "npm run dev:cli -w @continuum/core -- doctor",
-    "project-id": "node script/project-id.mjs",
-    "smoke:ollama": "npm run build -w @continuum/core && node packages/continuum/dist/cli/main.js smoke-provider ollama gemma3n:e2b",
-    "smoke:openai": "npm run build -w @continuum/core && node packages/continuum/dist/cli/main.js smoke-provider openai gpt-5.6-terra",
-    "benchmark:retrieval": "npm run build -w @continuum/core && node packages/continuum/dist/cli/main.js benchmark-retrieval 10000",
+    "smoke:apple": "npm run build -w @continuum/core && tsx packages/continuum/test/provider-smoke.ts apple",
+    "smoke:ollama": "npm run build -w @continuum/core && tsx packages/continuum/test/provider-smoke.ts ollama gemma3n:e2b",
+    "smoke:openai": "npm run build -w @continuum/core && tsx packages/continuum/test/provider-smoke.ts openai gpt-5.6-terra",
+    "benchmark:retrieval": "npm run build -w @continuum/core && tsx packages/continuum/test/benchmark-retrieval.ts 10000",
     "setup:models": "ollama pull gemma3n:e2b"
   },
   "devDependencies": {

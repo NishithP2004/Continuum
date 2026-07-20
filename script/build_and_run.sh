@@ -8,9 +8,14 @@ app_bundle="${dist_dir}/Continuum.app"
 daemon_pid_file="${runtime_dir}/daemon.pid"
 daemon_log="${runtime_dir}/daemon.log"
 app_log="${runtime_dir}/app.log"
-daemon_port="${CONTINUUM_PORT:-43117}"
+daemon_port="43117"
 daemon_entrypoint="${continuum_root}/packages/continuum/dist/server/main.js"
 mode="${1:-run}"
+
+if [[ -n "${CONTINUUM_PORT:-}" && "${CONTINUUM_PORT}" != "${daemon_port}" ]]; then
+  echo "Continuum uses the fixed local port ${daemon_port}; CONTINUUM_PORT cannot override it." >&2
+  exit 2
+fi
 
 case "${mode}" in
   run|--debug|--logs|--telemetry|--verify) ;;
@@ -101,8 +106,10 @@ fi
 
 npm run build --prefix "${continuum_root}"
 "${continuum_root}/script/swift.sh" build --disable-sandbox --package-path "${continuum_root}/native/ContinuumApp" --product ContinuumApp
+"${continuum_root}/script/swift.sh" build --disable-sandbox --package-path "${continuum_root}/native/ContinuumApp" --product ContinuumFoundationModelBridge
 swift_bin_dir="$("${continuum_root}/script/swift.sh" build --disable-sandbox --package-path "${continuum_root}/native/ContinuumApp" --show-bin-path)"
 swift_binary="${swift_bin_dir}/ContinuumApp"
+apple_bridge_binary="${swift_bin_dir}/ContinuumFoundationModelBridge"
 
 if [[ ! -x "${swift_binary}" ]]; then
   echo "Swift executable was not produced at ${swift_binary}" >&2
@@ -112,6 +119,9 @@ fi
 rm -rf "${app_bundle}"
 mkdir -p "${app_bundle}/Contents/MacOS" "${app_bundle}/Contents/Resources"
 cp "${swift_binary}" "${app_bundle}/Contents/MacOS/ContinuumApp"
+if [[ -x "${apple_bridge_binary}" ]]; then
+  cp "${apple_bridge_binary}" "${app_bundle}/Contents/MacOS/ContinuumFoundationModelBridge"
+fi
 cp "${continuum_root}/native/ContinuumApp/Info.plist" "${app_bundle}/Contents/Info.plist"
 
 : > "${daemon_log}"
@@ -127,9 +137,10 @@ for _ in {1..80}; do
   if ! kill -0 "${daemon_pid}" 2>/dev/null; then
     break
   fi
-  active_listener_pids="$(listener_pids)"
-  if grep -Fx "${daemon_pid}" <<< "${active_listener_pids}" >/dev/null 2>&1 \
-    && curl --fail --silent "http://127.0.0.1:${daemon_port}/health" >/dev/null 2>&1 \
+  # The port was proven vacant immediately before launch. A live child plus a
+  # successful health response is the portable readiness contract; lsof can
+  # briefly omit a freshly detached process on macOS and caused false failures.
+  if curl --fail --silent "http://127.0.0.1:${daemon_port}/health" >/dev/null 2>&1 \
     && kill -0 "${daemon_pid}" 2>/dev/null; then
     daemon_ready=true
     break
@@ -161,12 +172,31 @@ open_app() {
   if [[ -n "${CONTINUUM_TOKEN:-}" ]]; then
     open_arguments+=(--env "CONTINUUM_TOKEN=${CONTINUUM_TOKEN}")
   fi
+  if [[ -n "${CONTINUUM_AUTH_TOKEN:-}" ]]; then
+    open_arguments+=(--env "CONTINUUM_AUTH_TOKEN=${CONTINUUM_AUTH_TOKEN}")
+  fi
+  if [[ -n "${CONTINUUM_SYNC_URL:-}" ]]; then
+    open_arguments+=(--env "CONTINUUM_SYNC_URL=${CONTINUUM_SYNC_URL}")
+  fi
+  if [[ -n "${CONTINUUM_AUTH0_ISSUER:-}" ]]; then
+    open_arguments+=(--env "CONTINUUM_AUTH0_ISSUER=${CONTINUUM_AUTH0_ISSUER}")
+  fi
+  if [[ -n "${CONTINUUM_AUTH0_CLIENT_ID:-}" ]]; then
+    open_arguments+=(--env "CONTINUUM_AUTH0_CLIENT_ID=${CONTINUUM_AUTH0_CLIENT_ID}")
+  fi
+  if [[ -n "${CONTINUUM_AUTH0_AUDIENCE:-}" ]]; then
+    open_arguments+=(--env "CONTINUUM_AUTH0_AUDIENCE=${CONTINUUM_AUTH0_AUDIENCE}")
+  fi
+  if [[ -n "${CONTINUUM_AUTH0_SCOPES:-}" ]]; then
+    open_arguments+=(--env "CONTINUUM_AUTH0_SCOPES=${CONTINUUM_AUTH0_SCOPES}")
+  fi
   /usr/bin/open "${open_arguments[@]}" "${app_bundle}"
 }
 
 if [[ "${mode}" == "--verify" ]]; then
   plutil -lint "${app_bundle}/Contents/Info.plist"
   test -x "${app_bundle}/Contents/MacOS/ContinuumApp"
+  test -x "${app_bundle}/Contents/MacOS/ContinuumFoundationModelBridge"
   curl --fail --silent "http://127.0.0.1:${daemon_port}/health" >/dev/null
   open_app
   sleep 1
