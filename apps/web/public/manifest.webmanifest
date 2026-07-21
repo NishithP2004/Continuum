@@ -28,12 +28,6 @@
       "purpose": "any"
     },
     {
-      "src": "/continuum-mark.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
       "src": "/continuum-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",

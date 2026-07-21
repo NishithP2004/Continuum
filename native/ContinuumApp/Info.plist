@@ -12,6 +12,8 @@
     <string>dev.continuum.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>ContinuumApp</string>
     <key>CFBundleName</key>
     <string>Continuum</string>
     <key>CFBundlePackageType</key>

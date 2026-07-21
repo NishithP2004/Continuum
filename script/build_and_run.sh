@@ -123,6 +123,12 @@ if [[ -x "${apple_bridge_binary}" ]]; then
   cp "${apple_bridge_binary}" "${app_bundle}/Contents/MacOS/ContinuumFoundationModelBridge"
 fi
 cp "${continuum_root}/native/ContinuumApp/Info.plist" "${app_bundle}/Contents/Info.plist"
+app_icon="${continuum_root}/native/ContinuumApp/Resources/ContinuumApp.icns"
+if [[ ! -f "${app_icon}" ]]; then
+  echo "Continuum app icon is missing at ${app_icon}. Run ./script/generate_app_icons.sh." >&2
+  exit 1
+fi
+cp "${app_icon}" "${app_bundle}/Contents/Resources/ContinuumApp.icns"
 
 : > "${daemon_log}"
 daemon_pid="$(node "${continuum_root}/script/launch_daemon.mjs" "${daemon_entrypoint}" "${daemon_log}")"
@@ -195,6 +201,8 @@ open_app() {
 
 if [[ "${mode}" == "--verify" ]]; then
   plutil -lint "${app_bundle}/Contents/Info.plist"
+  [[ "$(plutil -extract CFBundleIconFile raw "${app_bundle}/Contents/Info.plist")" == "ContinuumApp" ]]
+  test -f "${app_bundle}/Contents/Resources/ContinuumApp.icns"
   test -x "${app_bundle}/Contents/MacOS/ContinuumApp"
   test -x "${app_bundle}/Contents/MacOS/ContinuumFoundationModelBridge"
   curl --fail --silent "http://127.0.0.1:${daemon_port}/health" >/dev/null

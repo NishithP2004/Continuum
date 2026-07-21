@@ -7,6 +7,7 @@ import { ApiError, contextActionFromApiError } from "../lib/api";
 import { isLocalServiceUrl } from "../lib/config";
 import type { ChatMessage, ChatRunEvent, Citation, ContextAction, GraphNode } from "../lib/types";
 import { Button, EmptyState, ErrorState, formatRelativeTime, IconButton, Spinner } from "./ui";
+import { MarkdownContent } from "./MarkdownContent";
 
 const citationIcons: Record<string, typeof Bookmark> = { checkpoint: Bookmark, file: FileCode2, commit: GitCommitHorizontal, blocker: AlertTriangle, entity: Search };
 
@@ -51,7 +52,7 @@ function Message({ message }: { message: ChatMessage }) {
       {message.role === "assistant" && <div className="assistant-avatar"><img src="/continuum-mark.svg" alt="" /></div>}
       <div className="chat-message__body">
         <header><strong>{message.role === "assistant" ? "Continuum Agent" : "You"}</strong><time dateTime={message.createdAt}>{formatRelativeTime(message.createdAt)}</time></header>
-        <div className="chat-message__copy">{message.content}</div>
+        <MarkdownContent className="chat-message__copy" content={message.content} />
         {!!message.citations.length && <div className="citation-list" aria-label="Evidence">{message.citations.map((citation) => <CitationCard key={citation.id} citation={citation} />)}</div>}
         {!!message.hypotheses?.length && <div className="hypothesis"><AlertTriangle size={17} /><div><strong>Unverified {message.hypotheses.length === 1 ? "hypothesis" : "hypotheses"}</strong>{message.hypotheses.map((item) => <p key={item}>{item}</p>)}</div></div>}
         {message.actions?.map((action) => <AgentAction key={action.id} sessionId={message.sessionId} action={action} />)}
@@ -176,14 +177,16 @@ export function AgentPanel({ compact = false, contextNode, contextLabel }: { com
     }
   }
 
-  const waiting = state.isPending || sessions.isPending || Boolean(sessionId && messages.isPending);
+  const waiting = state.isPending
+    || (state.isSuccess && sessions.isPending)
+    || Boolean(state.isSuccess && sessions.isSuccess && sessionId && messages.isPending);
   const error = state.error || sessions.error || messages.error;
   return (
     <section className={compact ? "agent-panel agent-panel--compact" : "agent-panel"} aria-label="Continuum Agent">
       <header className="agent-panel__header"><div><h1>{compact ? "Continuum Agent" : "Chat"}</h1>{!compact && <p>Grounded in your Continuum graph and timeline.</p>}</div><div className="agent-panel__header-actions">{!compact && sessions.data && <label className="conversation-select"><span className="sr-only">Conversation</span><select aria-label="Conversation" value={sessionId ?? ""} onChange={(event) => setSessionId(event.target.value || undefined)} disabled={running || createSession.isPending}><option value="">New conversation</option>{sessions.data.sessions.map((session) => <option key={session.id} value={session.id}>{session.title}</option>)}</select></label>}{!compact && <IconButton label="New conversation" title={remotePersonalSyncDisabled ? "Enable personal cloud eligibility in Privacy before creating a synchronized chat." : "New conversation"} onClick={() => createSession.mutate()} disabled={running || createSession.isPending || remotePersonalSyncDisabled}>{createSession.isPending ? <Spinner label="Creating conversation" /> : <Plus size={18} />}</IconButton>}{privacyState ? <div className="chat-privacy-state" data-state={privacyState} title={privacyState === "sync_disabled" ? "Your privacy policy does not allow personal chat synchronization." : privacyState === "local_only" ? "This confidential conversation stays on the connected local Continuum service." : privacyState === "sync_eligible" ? "This conversation is eligible for synchronization under your privacy policy." : "The connected service did not report this conversation’s synchronization eligibility."}>{privacyState === "sync_disabled" || privacyState === "local_only" ? <LockKeyhole size={16} /> : privacyState === "sync_eligible" ? <Cloud size={16} /> : <ShieldCheck size={16} />}<span>{privacyState === "sync_disabled" ? "Sync disabled" : privacyState === "local_only" ? "Local only" : privacyState === "sync_eligible" ? "Sync eligible" : "Policy governed"}</span></div> : <ShieldCheck size={20} aria-label="Privacy policy active" />}</div></header>
       {contextName && <div className="context-strip"><span>Graph context</span><strong>{contextName}</strong></div>}
       <div className="agent-panel__messages" aria-live="polite">
-        {waiting ? <div className="agent-loading"><Spinner label="Loading conversations" /></div> : error ? <ErrorState error={error} retry={() => { void state.refetch(); void sessions.refetch(); if (sessionId) void messages.refetch(); }} title="Couldn’t load conversations" /> : !displayedMessages.length && !streamText ? <EmptyState icon={<Bot />} title="Ask about your live context" detail="Continuum cites the checkpoints, files, commits, blockers, and decisions behind every grounded answer." /> : <>{displayedMessages.map((message) => <Message key={message.id} message={message} />)}{streamText && <article className="chat-message chat-message--assistant"><div className="assistant-avatar"><img src="/continuum-mark.svg" alt="" /></div><div className="chat-message__body"><header><strong>Continuum Agent</strong><LoaderCircle className="streaming-icon" size={14} /></header><div className="chat-message__copy">{streamText}</div></div></article>}</>}
+        {waiting ? <div className="agent-loading"><Spinner label="Loading conversations" /></div> : error ? <ErrorState error={error} retry={() => { void state.refetch(); void sessions.refetch(); if (sessionId) void messages.refetch(); }} title="Couldn’t load conversations" /> : !displayedMessages.length && !streamText ? <EmptyState icon={<Bot />} title="Ask about your live context" detail="Continuum cites the checkpoints, files, commits, blockers, and decisions behind every grounded answer." /> : <>{displayedMessages.map((message) => <Message key={message.id} message={message} />)}{streamText && <article className="chat-message chat-message--assistant"><div className="assistant-avatar"><img src="/continuum-mark.svg" alt="" /></div><div className="chat-message__body"><header><strong>Continuum Agent</strong><LoaderCircle className="streaming-icon" size={14} /></header><MarkdownContent className="chat-message__copy" content={streamText} /></div></article>}</>}
         {streamError && <div className="chat-error" role="alert"><AlertTriangle size={17} /><span>{streamError}</span></div>}<div ref={endRef} />
       </div>
       {chatSyncBlocked && <div className="chat-consent-notice" role="status"><LockKeyhole size={18} /><div><strong>Chat sync needs your consent</strong><span>This remote service can start or continue a personal conversation only when Personal metadata is cloud eligible. Continuum will never enable that setting automatically.</span></div><Link to="/privacy">Review privacy</Link></div>}

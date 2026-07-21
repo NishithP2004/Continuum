@@ -116,10 +116,11 @@ final class LivePlatformModelTests: XCTestCase {
             .appendingPathComponent("continuum-native-queue-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = NativeEventQueueStore(fileURL: directory.appendingPathComponent("events.json"))
-        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-07-20T12:00:00Z"))
+        let now = Date()
+        let formatter = ISO8601DateFormatter()
         let expired = NativeCollectedEvent(
             deviceID: "device-queue",
-            time: "2026-07-19T11:59:59Z",
+            time: formatter.string(from: now.addingTimeInterval(-(24 * 60 * 60) - 1)),
             eventType: "app_activated",
             title: "Old safe metadata",
             dedupeKey: "old",
@@ -127,7 +128,7 @@ final class LivePlatformModelTests: XCTestCase {
         )
         let live = NativeCollectedEvent(
             deviceID: "device-queue",
-            time: "2026-07-20T11:59:59Z",
+            time: formatter.string(from: now.addingTimeInterval(-1)),
             eventType: "app_activated",
             title: "Current safe metadata",
             dedupeKey: "live",

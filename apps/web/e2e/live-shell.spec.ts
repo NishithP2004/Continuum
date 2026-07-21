@@ -200,6 +200,49 @@ test("requires explicit privacy consent before remote personal chat", async ({ p
   await expect(page.getByRole("heading", { name: "Privacy controls" })).toBeVisible();
 });
 
+test("renders safe Markdown in grounded assistant messages", async ({ page }, testInfo) => {
+  await page.unroute("**/v1/**");
+  const sessionId = "6a4af60a-21c3-42d9-a27b-babe45b0acc0";
+  const markdown = [
+    "# Resume plan",
+    "Use **two** files and run `npm test`.",
+    "",
+    "- Inspect the checkpoint",
+    "- Resolve the blocker",
+    "",
+    "| State | Result |",
+    "| --- | --- |",
+    "| Tests | Passed |",
+    "",
+    "[Documentation](https://example.com)",
+    "",
+    "![remote tracker](https://example.com/pixel.png)",
+    "",
+    "<script>window.markdownUnsafe = true</script>"
+  ].join("\n");
+  await page.route("**/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/v1/state") return route.fulfill({ json: { ...state, projectId: "project-live", activeProject: { id: "project-live", name: "Continuum" } } });
+    if (path === "/v1/chat/sessions") return route.fulfill({ json: { sessions: [{ id: sessionId, projectId: "project-live", title: "Markdown", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), classification: "public", syncEligibility: "cloud_eligible" }] } });
+    if (path === `/v1/chat/sessions/${sessionId}/messages`) return route.fulfill({ json: { messages: [{ version: "1", id: crypto.randomUUID(), sessionId, role: "assistant", text: markdown, citations: [], unverifiedHypotheses: [], provider: "continuum", model: "remote-context-composer", createdAt: new Date().toISOString(), syncEligibility: "cloud_eligible" }] } });
+    return route.fulfill({ status: 404, json: { error: "not_available" } });
+  });
+
+  await page.goto("/chat");
+  await expect(page.getByRole("heading", { name: "Resume plan" })).toBeVisible();
+  await expect(page.getByText("two")).toHaveCSS("font-weight", /^(600|700)$/);
+  await expect(page.getByText("npm test")).toHaveCSS("font-family", /mono/i);
+  await expect(page.getByRole("list")).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Documentation" })).toHaveAttribute("rel", "noreferrer noopener");
+  await expect(page.locator(".chat-message img")).toHaveCount(1);
+  await expect(page.getByText("[Image: remote tracker]")).toBeVisible();
+  expect(await page.evaluate(() => (window as Window & { markdownUnsafe?: boolean }).markdownUnsafe)).toBeUndefined();
+  if (process.env.CONTINUUM_E2E_SCREENSHOTS === "1") {
+    await page.screenshot({ path: `/tmp/continuum-markdown-${testInfo.project.name}.png`, fullPage: false });
+  }
+});
+
 test("stop cancels the exact server chat run and labels confidential sessions", async ({ page }) => {
   await page.unroute("**/v1/**");
   const sessionId = "4b2523e8-565f-4af1-968c-7fe2dd42f2e9";

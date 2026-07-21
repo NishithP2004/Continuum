@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { ApiProvider } from "../lib/api-context";
 import { SessionProvider } from "../lib/auth";
@@ -27,13 +27,28 @@ function renderApp(path: string) {
   return render(<SessionProvider><ApiProvider><QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider></ApiProvider></SessionProvider>);
 }
 
+beforeEach(() => {
+  vi.stubEnv("VITE_AUTH0_DOMAIN", "");
+  vi.stubEnv("VITE_AUTH0_CLIENT_ID", "");
+  vi.stubEnv("VITE_AUTH0_AUDIENCE", "");
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
 describe("Continuum PWA", () => {
+  it("exits the chat loading state when the authenticated state request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "missing bearer token" }), { status: 401 })));
+    renderApp("/chat");
+
+    expect(await screen.findByRole("heading", { name: "Couldn’t load conversations" }, { timeout: 5_000 })).toBeInTheDocument();
+    expect(screen.queryByText("Loading conversations")).not.toBeInTheDocument();
+  });
+
   it("shows a live empty state without fabricated metrics or checkpoints", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

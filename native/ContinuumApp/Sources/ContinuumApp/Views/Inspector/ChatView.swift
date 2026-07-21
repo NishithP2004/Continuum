@@ -233,8 +233,7 @@ private struct ChatMessageRow: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Text(message.text.isEmpty && message.isStreaming ? "Thinking…" : message.text)
-                    .textSelection(.enabled)
+                MarkdownMessageView(source: message.text.isEmpty && message.isStreaming ? "Thinking…" : message.text)
                     .foregroundStyle(message.text.isEmpty ? .secondary : .primary)
 
                 if !message.citations.isEmpty {

@@ -47,7 +47,8 @@ describe("Continuum API URL policy", () => {
 
   it("discards a legacy unsafe stored endpoint instead of contacting it", () => {
     window.localStorage.setItem("continuum.apiUrl", "http://continuum.example");
-    expect(configuredApiUrl()).toBe(window.location.origin);
+    const configuredDefault = validateApiUrl(import.meta.env.VITE_CONTINUUM_API_URL || window.location.origin);
+    expect(configuredApiUrl()).toBe(configuredDefault);
     expect(window.localStorage.getItem("continuum.apiUrl")).toBeNull();
   });
 });

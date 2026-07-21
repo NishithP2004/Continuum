@@ -43,14 +43,19 @@ const unavailableSession: SessionValue = {
   }
 };
 
-function Auth0Session({ children }: PropsWithChildren) {
+function Auth0Session({ children, audience }: PropsWithChildren<{ audience?: string }>) {
   const { isAuthenticated, isLoading, user, loginWithRedirect, logout, getAccessTokenSilently } = useAuth0();
   const login = useCallback(async () => loginWithRedirect({ appState: { returnTo: window.location.pathname } }), [loginWithRedirect]);
   const signOut = useCallback(() => logout({ logoutParams: { returnTo: window.location.origin } }), [logout]);
   const token = useCallback(async () => {
     if (!isAuthenticated) return undefined;
-    return getAccessTokenSilently();
-  }, [getAccessTokenSilently, isAuthenticated]);
+    return getAccessTokenSilently({
+      authorizationParams: {
+        scope: CONTINUUM_AUTH0_SCOPES,
+        ...(audience ? { audience } : {})
+      }
+    });
+  }, [audience, getAccessTokenSilently, isAuthenticated]);
   const value = useMemo<SessionValue>(() => ({
     configured: true,
     authenticated: isAuthenticated,
@@ -80,7 +85,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       cacheLocation="memory"
       useRefreshTokens
     >
-      <Auth0Session>{children}</Auth0Session>
+      <Auth0Session audience={configuration.audience}>{children}</Auth0Session>
     </Auth0Provider>
   );
 }
